@@ -14,10 +14,33 @@ export class ProviderError extends Error {
     message: string,
     readonly status: number | null,
     readonly retryable: boolean,
+    /** Provider error type, e.g. "insufficient_quota" or "invalid_request_error", when known. */
+    readonly providerType: string | null = null,
   ) {
     super(message);
     this.name = 'ProviderError';
   }
+
+  /** The account is out of credits/quota: not transient, needs a human (billing). */
+  get isQuotaExhausted(): boolean {
+    return this.providerType === 'insufficient_quota';
+  }
+}
+
+/**
+ * 429 means two very different things at OpenAI: a transient rate limit (retry) or an
+ * exhausted credit balance, `insufficient_quota` (retrying never helps).
+ */
+function classifyFailure(status: number, body: string): { retryable: boolean; providerType: string | null } {
+  let providerType: string | null = null;
+  try {
+    const type = (JSON.parse(body) as { error?: { type?: unknown } }).error?.type;
+    if (typeof type === 'string') providerType = type;
+  } catch {
+    // non-JSON error body
+  }
+  const retryable = providerType !== 'insufficient_quota' && (status === 429 || status >= 500);
+  return { retryable, providerType };
 }
 
 export interface CreateCallResult {
@@ -53,11 +76,8 @@ export class OpenAICallsClient {
     });
     const body = await res.text();
     if (!res.ok) {
-      throw new ProviderError(
-        `createCall failed (${res.status}): ${truncate(body)}`,
-        res.status,
-        res.status === 429 || res.status >= 500,
-      );
+      const { retryable, providerType } = classifyFailure(res.status, body);
+      throw new ProviderError(`createCall failed (${res.status}): ${truncate(body)}`, res.status, retryable, providerType);
     }
 
     const callId = parseCallId(res.headers.get('location'));
@@ -87,7 +107,14 @@ export class OpenAICallsClient {
         signal: AbortSignal.timeout(this.timeoutMs),
       });
     } catch (err) {
-      throw new ProviderError(`network error calling ${path}: ${(err as Error).message}`, null, true);
+      // undici reports "fetch failed" with the real reason (DNS, TLS, reset, header error) in `cause`.
+      const cause = (err as Error & { cause?: unknown }).cause;
+      const detail = cause instanceof Error ? `${cause.name}: ${cause.message}` : cause ? String(cause) : '';
+      throw new ProviderError(
+        `network error calling ${path}: ${(err as Error).message}${detail ? ` (${detail})` : ''}`,
+        null,
+        true,
+      );
     }
   }
 }

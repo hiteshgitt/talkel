@@ -100,7 +100,9 @@ async function startApi(env: Record<string, string>): Promise<{ base: string; pr
   const port = String(20000 + Math.floor(Math.random() * 20000));
   const proc = spawn(process.execPath, ['dist/main.js'], {
     cwd: join(import.meta.dirname, '..'),
-    env: { PATH: process.env.PATH ?? '', PORT: port, POC_DEV_TOKEN: TOKEN, ...env },
+    // Never read apps/api/.env here: it may hold a real key/base URL, and these tests must only
+    // ever talk to the fake provider.
+    env: { PATH: process.env.PATH ?? '', PORT: port, POC_DEV_TOKEN: TOKEN, DOTENV_PATH: '/nonexistent/.env', ...env },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = '';

@@ -120,6 +120,14 @@ export class PocCallsService implements OnApplicationShutdown {
   private providerProblem(err: unknown): ProblemException {
     if (err instanceof ProviderError) {
       this.logger.error(err.message);
+      if (err.isQuotaExhausted) {
+        // Billing problem on our side: don't invite retries, and make it easy to alert on.
+        return new ProblemException(
+          HttpStatus.SERVICE_UNAVAILABLE,
+          'PROVIDER_QUOTA_EXHAUSTED',
+          'The AI voice service is unavailable right now',
+        );
+      }
       return new ProblemException(
         err.retryable ? HttpStatus.SERVICE_UNAVAILABLE : HttpStatus.BAD_GATEWAY,
         'PROVIDER_UNAVAILABLE',

@@ -19,8 +19,8 @@ Not tested yet, because a real key and a device are needed: a live OpenAI call a
 2. **Expo account** (free) → for `eas build` of the development build
 3. **Android phone** (Android 10+), ideally also one low-to-mid-range device
 4. The phone must reach the API over the network (only signalling goes there; audio goes straight to OpenAI). Use one of:
-   - the same LAN as the server: `http://<server-lan-ip>:4000/v1` (dev builds allow HTTP), or
-   - an HTTPS tunnel (e.g. `cloudflared tunnel --url http://localhost:4000`) if the phone is on mobile data (recommended for the 4G latency test).
+   - the same LAN as the server: `http://<server-lan-ip>:4810/v1` (dev builds allow HTTP), or
+   - an HTTPS tunnel (e.g. `cloudflared tunnel --url http://localhost:4810`) if the phone is on mobile data (recommended for the 4G latency test).
 
 ## Run it
 

@@ -48,6 +48,21 @@ describe('OpenAICallsClient.createCall', () => {
     await expect(mk(401).createCall(sdp, {})).rejects.toMatchObject({ retryable: false, status: 401 });
   });
 
+  it('treats an exhausted credit balance (429 insufficient_quota) as non-retryable', async () => {
+    const client = new OpenAICallsClient({
+      apiKey: 'k',
+      baseUrl: 'https://x.test/v1',
+      fetchImpl: async () =>
+        new Response(
+          JSON.stringify({ error: { type: 'insufficient_quota', code: 'credit_balance_exhausted', message: 'no credits' } }),
+          { status: 429 },
+        ),
+    });
+    const err = await client.createCall(sdp, {}).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ProviderError);
+    expect(err).toMatchObject({ status: 429, retryable: false, providerType: 'insufficient_quota', isQuotaExhausted: true });
+  });
+
   it('rejects a success response without a call id', async () => {
     const client = new OpenAICallsClient({
       apiKey: 'k',
