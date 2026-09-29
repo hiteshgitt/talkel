@@ -20,6 +20,7 @@ export interface GeminiCallDeps {
 }
 
 const WRAP_UP_LEAD_MS = 60_000;
+const STATS_LOG_INTERVAL_MS = 10_000;
 type Floor = 'none' | 'user' | 'ai';
 
 /**
@@ -48,6 +49,11 @@ export class GeminiCallSession implements LiveCall {
 
   get callId(): string {
     return this.deps.callId;
+  }
+
+  /** Audio-quality counters (see MediaStats), for logs and the M0 report. */
+  mediaStats() {
+    return this.deps.media.stats();
   }
 
   get isEnded(): boolean {
@@ -96,6 +102,7 @@ export class GeminiCallSession implements LiveCall {
     this.timers.push(
       setTimeout(() => this.cue(this.deps.wrapUpCue, false), Math.max(0, this.deps.maxDurationMs - WRAP_UP_LEAD_MS)),
       setTimeout(() => void this.end('TIME_LIMIT'), this.deps.maxDurationMs),
+      setInterval(() => this.logSys({ kind: 'media_stats', ...media.stats() }), STATS_LOG_INTERVAL_MS),
     );
     this.logSys({ kind: 'started', maxDurationMs: this.deps.maxDurationMs });
   }
@@ -114,7 +121,7 @@ export class GeminiCallSession implements LiveCall {
     this.endedAt = this.now();
     for (const t of this.timers) clearTimeout(t);
     this.transcript.finalizeAll();
-    this.logSys({ kind: 'ending', reason, usage: this.usage });
+    this.logSys({ kind: 'ending', reason, usage: this.usage, media: this.deps.media.stats() });
 
     this.deps.media.sendControl({ type: 'call.ended', reason });
     this.deps.live.close();
@@ -157,6 +164,7 @@ export class GeminiCallSession implements LiveCall {
         this.transcript.interrupted();
         break;
       case 'turn_complete':
+        this.deps.media.aiTurnEnded();
         this.transcript.turnComplete();
         break;
       case 'usage':

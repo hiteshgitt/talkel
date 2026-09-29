@@ -58,9 +58,11 @@ Do not claim to be a real, identifiable person or a celebrity. If asked directly
 `.trim();
 
 const SCENARIO = `
-Scenario: a casual catch-up call between two friends. Possible topics: the weekend, work, hobbies, movies,
-travel, family, daily life. Move between topics naturally when one runs dry.
-You speak first: greet the user casually by phone ("Hey! How's it going?") and ask one easy opening question.
+Scenario: a casual catch-up call between two friends. Possible topics: work, hobbies, food, movies and series,
+travel, family, cricket and sports, plans, daily life. Move between topics naturally when one runs dry.
+You speak first. How you open, and why you're calling, is given to you in a call-system note at the start of each call.
+Vary your wording like a real person: never open with stock lines such as "How's it going?" or "Did you do anything
+fun this weekend?", and don't ask about the weekend unless it is actually the weekend or Monday.
 `.trim();
 
 const DIFFICULTY_INTERMEDIATE = `
@@ -94,8 +96,79 @@ export interface SessionConfigInput {
 // Gemini Live can't change config mid-session, so session-state changes (greeting, wrap-up)
 // are delivered as bracketed "call system" cues in the conversation instead.
 
-export const GREETING_CUE =
-  '(Call system: the phone call has just connected. You speak first — greet your friend casually and ask one easy opening question.)';
+/**
+ * Why the persona is calling today. Picked at random per call so conversations don't all open the
+ * same way (M2 will also avoid repeating a user's recent topics).
+ */
+export const OPENING_SITUATIONS = [
+  'you just tried cooking a new dish and it went hilariously wrong',
+  'you just finished a series everyone is talking about and want their opinion',
+  'you are planning a short trip next month and want suggestions',
+  'something funny happened at your office today',
+  'you started learning something new (guitar, running, or painting) and it is harder than you expected',
+  'you are torn between two options (buying a new phone, or choosing a restaurant for a family dinner) and want advice',
+  'the rain ruined your plans today',
+  "a friend's birthday is coming up and you have no idea what gift to get",
+  'you found an old photo from college that reminded you of them',
+  'you discovered a great new café or street-food place near your home',
+  'you watched an exciting cricket match and cannot stop thinking about it',
+  'you just moved your desk / rearranged your room and feel weirdly productive',
+  'you are thinking about switching jobs and want to talk it through',
+  'you had a strange conversation with your neighbour this morning',
+  'you are trying to get fit and just came back from a walk or the gym',
+  'you have been reading a book and one idea from it stuck with you',
+  'you are bored and simply want to catch up and hear their news',
+  'you saw a news story that surprised you (keep it light, no politics)',
+] as const;
+
+/** How the persona opens. Combined with a situation for variety. */
+export const OPENING_STYLES = [
+  'start with your own news in one sentence, then ask what they think',
+  'start by asking how their day has been going, with a specific guess (busy? relaxed?), then share your reason for calling',
+  'start by asking for their advice or opinion straight away',
+  'start with a quick, playful remark, then ask a question about them',
+  'start by asking a specific question about their life (work, plans, family), then mention your news',
+] as const;
+
+export interface OpeningChoice {
+  situation: string;
+  style: string;
+  /** e.g. "Tuesday evening" in the user's time zone. */
+  when: string;
+}
+
+/**
+ * Random opening for one call, avoiding recently used situations. `rng` and `now` are injectable
+ * for tests.
+ */
+export function pickOpening(
+  rng: () => number = Math.random,
+  now: Date = new Date(),
+  opts: { timeZone?: string; avoid?: readonly string[] } = {},
+): OpeningChoice {
+  const pick = <T>(list: readonly T[]): T => list[Math.floor(rng() * list.length) % list.length]!;
+  const fresh = OPENING_SITUATIONS.filter((s) => !opts.avoid?.includes(s));
+  return {
+    situation: pick(fresh.length > 0 ? fresh : OPENING_SITUATIONS),
+    style: pick(OPENING_STYLES),
+    when: localDayPart(now, opts.timeZone ?? 'Asia/Kolkata'),
+  };
+}
+
+export function buildGreetingCue({ situation, style, when }: OpeningChoice): string {
+  return (
+    `(Call system: the phone call has just connected. It is ${when} for both of you. You are calling because ${situation}. ` +
+    `Opening: ${style}. Speak first, in your own natural words, 1–2 short sentences ending with a question. ` +
+    `Don't copy these instructions word for word.)`
+  );
+}
+
+function localDayPart(now: Date, timeZone: string): string {
+  const weekday = new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone }).format(now);
+  const hour = Number(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hourCycle: 'h23', timeZone }).format(now));
+  const part = hour < 5 ? 'late night' : hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : hour < 21 ? 'evening' : 'night';
+  return `${weekday} ${part}`;
+}
 
 export const WRAP_UP_CUE = `(Call system note, not spoken by the user: ${WRAP_UP_NOTE})`;
 

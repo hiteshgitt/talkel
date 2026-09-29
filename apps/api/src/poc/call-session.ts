@@ -14,6 +14,8 @@ export interface CallSessionDeps {
   maxDurationMs: number;
   /** Full instructions with the wrap-up note appended, sent ~60 s before the hard stop. */
   wrapUpInstructions: string;
+  /** Per-call opening context, added as a text item before the AI's first response. */
+  greetingCue?: string;
   now?: () => number;
   onEnded?: (session: CallSession) => void;
   onError?: (message: string) => void;
@@ -73,6 +75,12 @@ export class CallSession implements LiveCall {
     if (this.greeted || this.isEnded) return;
     this.greeted = true;
     this.status = 'ACTIVE';
+    if (this.deps.greetingCue) {
+      this.send({
+        type: 'conversation.item.create',
+        item: { type: 'message', role: 'user', content: [{ type: 'input_text', text: this.deps.greetingCue }] },
+      });
+    }
     this.send({ type: 'response.create' });
   }
 

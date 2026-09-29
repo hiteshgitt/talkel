@@ -28,6 +28,30 @@ describe('PcmPacer', () => {
     expect(pacer.nextFrame()).toBeNull();
   });
 
+  it('pre-buffers each talk-spurt, then plays continuously until the queue runs dry', () => {
+    const pacer = new PcmPacer(24000, { prebufferMs: 100, maxHoldMs: 200 });
+    const frame = frameBytes(24000);
+
+    pacer.push(Buffer.alloc(frame * 2), 0); // 40 ms queued
+    expect(pacer.nextFrame(20)).toBeNull(); // below 100 ms: hold
+    pacer.push(Buffer.alloc(frame * 3), 30); // 100 ms queued
+    expect(pacer.nextFrame(40)).not.toBeNull(); // start
+    pacer.push(Buffer.alloc(frame), 50);
+    // Once flowing, it keeps going even below the pre-buffer level.
+    for (let i = 0; i < 5; i++) expect(pacer.nextFrame(60 + i * 20)).not.toBeNull();
+    expect(pacer.nextFrame(200)).toBeNull(); // dry → next talk-spurt pre-buffers again
+
+    pacer.push(Buffer.alloc(frame), 300);
+    expect(pacer.nextFrame(320)).toBeNull();
+  });
+
+  it('starts a short utterance after maxHoldMs even if the pre-buffer never fills', () => {
+    const pacer = new PcmPacer(24000, { prebufferMs: 100, maxHoldMs: 200 });
+    pacer.push(Buffer.alloc(frameBytes(24000)), 1000);
+    expect(pacer.nextFrame(1100)).toBeNull();
+    expect(pacer.nextFrame(1200)).not.toBeNull();
+  });
+
   it('clear() drops queued audio (barge-in)', () => {
     const pacer = new PcmPacer(24000);
     pacer.push(Buffer.alloc(frameBytes(24000) * 10));

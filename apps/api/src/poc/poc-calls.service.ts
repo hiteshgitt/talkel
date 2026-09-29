@@ -12,8 +12,9 @@ import { CallSession } from './call-session.js';
 import {
   buildGeminiSetup,
   buildInstructions,
+  buildGreetingCue,
   buildSessionConfig,
-  GREETING_CUE,
+  pickOpening,
   POC_PERSONAS,
   WRAP_UP_CUE,
   WRAP_UP_NOTE,
@@ -23,12 +24,14 @@ import type { LiveCall } from './live-call.js';
 
 const MAX_CONCURRENT_CALLS = 3; // POC cost guard
 const MAX_RETAINED_ENDED = 50; // keep recent transcripts in memory (no DB in M0)
+const RECENT_OPENINGS_TO_AVOID = 6; // per server for now; per user once conversations are stored (M2)
 
 @Injectable()
 export class PocCallsService implements OnApplicationShutdown {
   private readonly logger = new Logger(PocCallsService.name);
   private readonly calls = new Map<string, LiveCall>();
   private readonly openai: OpenAICallsClient | null;
+  private readonly recentSituations: string[] = [];
 
   constructor(@Inject(ENV) private readonly env: Env) {
     this.openai = env.OPENAI_API_KEY
@@ -102,13 +105,15 @@ export class PocCallsService implements OnApplicationShutdown {
 
     const live: LiveSession = liveResult.value;
     const { endpoint, sdpAnswer } = mediaResult.value;
+    const opening = this.nextOpening();
+    this.logger.log(`call ${callId} opening: ${opening.when} · ${opening.situation} · ${opening.style}`);
     const call = new GeminiCallSession({
       callId,
       media: endpoint,
       live,
       log: new JsonlCallLog(this.env.CALL_LOG_DIR, callId),
       maxDurationMs: this.env.POC_MAX_SESSION_SECONDS * 1000,
-      greetingCue: GREETING_CUE,
+      greetingCue: buildGreetingCue(opening),
       wrapUpCue: WRAP_UP_CUE,
       onEnded: (c) => this.onCallEnded(c),
       onError: (m) => this.logger.warn(m),
@@ -164,6 +169,7 @@ export class PocCallsService implements OnApplicationShutdown {
       log: new JsonlCallLog(this.env.CALL_LOG_DIR, created.callId),
       maxDurationMs: this.env.POC_MAX_SESSION_SECONDS * 1000,
       wrapUpInstructions: buildInstructions(persona, WRAP_UP_NOTE),
+      greetingCue: buildGreetingCue(this.nextOpening()),
       onEnded: (c) => this.onCallEnded(c),
       onError: (m) => this.logger.warn(m),
     });
@@ -192,10 +198,18 @@ export class PocCallsService implements OnApplicationShutdown {
 
   // ───────────── shared ─────────────
 
+  private nextOpening() {
+    const opening = pickOpening(Math.random, new Date(), { avoid: this.recentSituations });
+    this.recentSituations.push(opening.situation);
+    if (this.recentSituations.length > RECENT_OPENINGS_TO_AVOID) this.recentSituations.shift();
+    return opening;
+  }
+
   private onCallEnded(c: LiveCall): void {
     const s = c.snapshot();
+    const media = c instanceof GeminiCallSession ? ` media=${JSON.stringify(c.mediaStats())}` : '';
     this.logger.log(
-      `call ${c.callId} ended: ${s.endReason} after ${s.durationMs} ms, ${s.turns.length} turns, usage=${JSON.stringify(c.usage)}`,
+      `call ${c.callId} ended: ${s.endReason} after ${s.durationMs} ms, ${s.turns.length} turns, usage=${JSON.stringify(c.usage)}${media}`,
     );
     this.pruneEnded();
   }

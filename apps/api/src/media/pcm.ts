@@ -21,28 +21,54 @@ export function rmsLevel(pcm: Buffer): number {
   return Math.sqrt(sum / samples);
 }
 
+export interface PcmPacerOptions {
+  /** Audio to accumulate before starting a talk-spurt, to absorb uneven delivery from the AI. */
+  prebufferMs?: number;
+  /** Start anyway once the first queued audio has waited this long (short utterances, tails). */
+  maxHoldMs?: number;
+}
+
 /**
- * Buffers AI audio that arrives in bursts (faster than real time) and hands it out in fixed
- * 20 ms frames for real-time RTP pacing. `clear()` implements barge-in: drop everything queued.
+ * Buffers AI audio that arrives in bursts and hands it out in fixed 20 ms frames for real-time
+ * RTP pacing. Each talk-spurt starts only after a small pre-buffer, so brief delivery hiccups
+ * from the provider don't become audible gaps mid-sentence. `clear()` implements barge-in.
  */
 export class PcmPacer {
   private readonly chunks: Buffer[] = [];
   private queued = 0;
   private readonly frame: number;
+  private readonly prebufferMs: number;
+  private readonly maxHoldMs: number;
+  private flowing = false;
+  private waitingSince: number | null = null;
 
-  constructor(sampleRate: number) {
+  constructor(sampleRate: number, opts: PcmPacerOptions = {}) {
     this.frame = frameBytes(sampleRate);
+    this.prebufferMs = opts.prebufferMs ?? 0;
+    this.maxHoldMs = opts.maxHoldMs ?? 0;
   }
 
-  push(pcm: Buffer): void {
+  push(pcm: Buffer, nowMs = 0): void {
     if (pcm.length === 0) return;
+    if (this.queued === 0 && !this.flowing) this.waitingSince ??= nowMs;
     this.chunks.push(pcm);
     this.queued += pcm.length;
   }
 
-  /** Next full 20 ms frame; a final partial frame is zero-padded. Null when empty. */
-  nextFrame(): Buffer | null {
-    if (this.queued === 0) return null;
+  /** Next full 20 ms frame; a final partial frame is zero-padded. Null when empty or pre-buffering. */
+  nextFrame(nowMs = 0): Buffer | null {
+    if (this.queued === 0) {
+      this.flowing = false;
+      this.waitingSince = null;
+      return null;
+    }
+    if (!this.flowing) {
+      const ready =
+        this.queuedMs >= this.prebufferMs || (this.waitingSince !== null && nowMs - this.waitingSince >= this.maxHoldMs);
+      if (!ready) return null;
+      this.flowing = true;
+      this.waitingSince = null;
+    }
     const out = Buffer.alloc(this.frame);
     let filled = 0;
     while (filled < this.frame && this.chunks.length > 0) {
@@ -60,6 +86,8 @@ export class PcmPacer {
   clear(): void {
     this.chunks.length = 0;
     this.queued = 0;
+    this.flowing = false;
+    this.waitingSince = null;
   }
 
   get queuedMs(): number {
