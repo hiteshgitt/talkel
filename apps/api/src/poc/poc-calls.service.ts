@@ -84,7 +84,10 @@ export class PocCallsService implements OnApplicationShutdown {
         url: this.env.GEMINI_LIVE_URL,
         setup: buildGeminiSetup({ model: this.env.GEMINI_LIVE_MODEL, persona }),
       }),
-      WebRtcEndpoint.answer(req.sdpOffer, { iceServers: iceServers(this.env.RTC_ICE_SERVERS) }),
+      WebRtcEndpoint.answer(req.sdpOffer, {
+        iceServers: iceServers(this.env.RTC_ICE_SERVERS),
+        udpPortRange: this.env.RTC_UDP_PORT_RANGE,
+      }),
     ]);
 
     if (liveResult.status === 'rejected' || mediaResult.status === 'rejected') {

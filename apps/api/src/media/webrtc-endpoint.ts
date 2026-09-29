@@ -31,6 +31,8 @@ export interface MediaEndpoint {
 
 export interface WebRtcEndpointOptions {
   iceServers: Array<{ urls: string }>;
+  /** Local UDP ports for media, e.g. [40000, 40099]. */
+  udpPortRange?: [number, number];
 }
 
 const INPUT_RATE = 16000;
@@ -62,6 +64,7 @@ export class WebRtcEndpoint implements MediaEndpoint {
   static async answer(sdpOffer: string, opts: WebRtcEndpointOptions): Promise<{ endpoint: WebRtcEndpoint; sdpAnswer: string }> {
     const pc = new RTCPeerConnection({
       iceServers: opts.iceServers,
+      icePortRange: opts.udpPortRange,
       codecs: {
         audio: [new RTCRtpCodecParameters({ mimeType: 'audio/opus', clockRate: OPUS_RTP_CLOCK, channels: 2 })],
         video: [],

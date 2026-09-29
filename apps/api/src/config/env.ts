@@ -21,6 +21,13 @@ const EnvSchema = z.object({
     .default('wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent'),
   /** Comma-separated STUN/TURN URLs for the server-side WebRTC endpoint (gemini mode). */
   RTC_ICE_SERVERS: z.string().default('stun:stun.l.google.com:19302'),
+  /** UDP port range for call media (gemini mode), so a firewall rule can be precise. "min-max". */
+  RTC_UDP_PORT_RANGE: z
+    .string()
+    .regex(/^\d{4,5}-\d{4,5}$/, 'RTC_UDP_PORT_RANGE must look like 40000-40099')
+    .default('40000-40099')
+    .transform((v) => v.split('-').map(Number) as [number, number])
+    .refine(([min, max]) => min < max && max <= 65535, 'RTC_UDP_PORT_RANGE: min must be < max <= 65535'),
   OPENAI_API_KEY: optionalSecret,
   OPENAI_BASE_URL: z.url().default('https://api.openai.com/v1'),
   REALTIME_MODEL: z.string().min(1).default('gpt-realtime-2.1'),

@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "SpeakAI",
-    "slug": "speakai",
+    "slug": "talkel",
     "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -30,7 +30,10 @@
         "android.permission.WAKE_LOCK",
         "android.permission.BLUETOOTH_CONNECT"
       ],
-      "blockedPermissions": ["android.permission.CAMERA", "android.permission.SYSTEM_ALERT_WINDOW"],
+      "blockedPermissions": [
+        "android.permission.CAMERA",
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ],
       "predictiveBackGestureEnabled": false
     },
     "plugins": [
@@ -52,6 +55,7 @@
       "eas": {
         "projectId": "669d268b-3b0c-4428-a6ef-db35b49cfbb1"
       }
-    }
+    },
+    "owner": "hiteshgml"
   }
 }

@@ -1,6 +1,7 @@
 import type { VoiceChoice } from '@speakai/contracts';
-import InCallManager from 'react-native-incall-manager';
-import { mediaDevices, type MediaStream, RTCPeerConnection } from '@livekit/react-native-webrtc';
+import type InCallManagerType from 'react-native-incall-manager';
+import type { MediaStream, RTCPeerConnection } from '@livekit/react-native-webrtc';
+import { nativeCallingProblem } from '@/lib/runtime';
 import { pocApi } from '@/lib/api';
 
 export type CallPhase = 'connecting' | 'active' | 'reconnecting' | 'ending' | 'ended' | 'failed';
@@ -42,6 +43,7 @@ export class RealtimeCall {
   private disconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private readySent = false;
   private closed = false;
+  private incall: typeof InCallManagerType | null = null;
 
   constructor(private readonly voice: VoiceChoice) {}
 
@@ -55,10 +57,20 @@ export class RealtimeCall {
   }
 
   async start(): Promise<void> {
+    const problem = nativeCallingProblem();
+    if (problem) {
+      this.fail(problem);
+      return;
+    }
     try {
+      // Loaded lazily: the native module only exists in our development/production builds, and
+      // Expo Router evaluates every route at startup, so a top-level import would crash the app.
+      const { mediaDevices, RTCPeerConnection: PeerConnection } = await import('@livekit/react-native-webrtc');
+      this.incall = (await import('react-native-incall-manager')).default;
+
       // Phone-call audio mode: earpiece by default, echo-cancelled voice path, proximity handling.
-      InCallManager.start({ media: 'audio' });
-      InCallManager.setForceSpeakerphoneOn(false);
+      this.incall.start({ media: 'audio' });
+      this.incall.setForceSpeakerphoneOn(false);
 
       // react-native-webrtc enables echo cancellation, noise suppression and AGC by default on
       // Android (its typings don't expose those constraint keys).
@@ -69,7 +81,7 @@ export class RealtimeCall {
       }
 
       // STUN lets the phone find a public address when it isn't on the server's LAN.
-      const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+      const pc = new PeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
       this.pc = pc;
       for (const track of this.mic.getAudioTracks()) pc.addTrack(track, this.mic);
 
@@ -109,7 +121,7 @@ export class RealtimeCall {
 
   toggleSpeaker(): void {
     const speaker = !this.state.speaker;
-    InCallManager.setForceSpeakerphoneOn(speaker);
+    this.incall?.setForceSpeakerphoneOn(speaker);
     this.set({ speaker });
   }
 
@@ -207,7 +219,7 @@ export class RealtimeCall {
     this.mic = null;
     this.pc?.close();
     this.pc = null;
-    InCallManager.stop();
+    this.incall?.stop();
   }
 
   private set(patch: Partial<CallState>): void {

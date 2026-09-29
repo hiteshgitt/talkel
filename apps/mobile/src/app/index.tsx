@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiConfigProblem } from '@/lib/api';
+import { nativeCallingProblem } from '@/lib/runtime';
 import { colors, radius } from '@/theme';
 
 const VOICES: { id: VoiceChoice; label: string; name: string }[] = [
@@ -13,7 +14,7 @@ const VOICES: { id: VoiceChoice; label: string; name: string }[] = [
 
 export default function SetupScreen() {
   const [voice, setVoice] = useState<VoiceChoice>('female');
-  const configProblem = apiConfigProblem();
+  const configProblem = apiConfigProblem() ?? nativeCallingProblem();
 
   return (
     <SafeAreaView style={styles.root} edges={['bottom']}>
