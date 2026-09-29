@@ -14,6 +14,7 @@
 | Mobile toolchain | Expo (development builds via EAS) |
 | Market | India first, and the design must not block other regions later |
 | Provider keys | OpenAI and any other API keys will be requested when a milestone needs them |
+| Realtime voice provider (M0) | **Gemini Live** for now: the OpenAI account has no credits (2026-09-29). OpenAI mode stays in the code behind `REALTIME_PROVIDER=openai`. See VOICE-ARCHITECTURE §3a. |
 
 | Doc | What it answers |
 |---|---|

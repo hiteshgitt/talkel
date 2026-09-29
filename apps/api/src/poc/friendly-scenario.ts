@@ -9,7 +9,10 @@ import type { VoiceChoice } from '@speakai/contracts';
 
 export interface PocPersona {
   name: string;
+  /** OpenAI Realtime voice. */
   providerVoice: string;
+  /** Gemini Live prebuilt voice. */
+  geminiVoice: string;
   fragment: string;
 }
 
@@ -17,6 +20,7 @@ export const POC_PERSONAS: Record<VoiceChoice, PocPersona> = {
   female: {
     name: 'Maya',
     providerVoice: 'marin',
+    geminiVoice: 'Kore',
     fragment:
       'You are Maya, 27, a warm, curious friend who works as a product designer in Bengaluru. ' +
       'You love trying new food places, weekend treks and bad sci-fi movies. You laugh easily.',
@@ -24,6 +28,7 @@ export const POC_PERSONAS: Record<VoiceChoice, PocPersona> = {
   male: {
     name: 'Rohan',
     providerVoice: 'cedar',
+    geminiVoice: 'Puck',
     fragment:
       'You are Rohan, 29, an easy-going friend who works as a backend engineer in Pune. ' +
       'You play cricket on Sundays, are learning to cook, and follow tech news closely.',
@@ -83,6 +88,41 @@ export interface SessionConfigInput {
   model: string;
   transcribeModel: string;
   persona: PocPersona;
+}
+
+// ───────────── Gemini Live ─────────────
+// Gemini Live can't change config mid-session, so session-state changes (greeting, wrap-up)
+// are delivered as bracketed "call system" cues in the conversation instead.
+
+export const GREETING_CUE =
+  '(Call system: the phone call has just connected. You speak first — greet your friend casually and ask one easy opening question.)';
+
+export const WRAP_UP_CUE = `(Call system note, not spoken by the user: ${WRAP_UP_NOTE})`;
+
+export function buildGeminiSetup({ model, persona }: { model: string; persona: PocPersona }) {
+  return {
+    model: model.startsWith('models/') ? model : `models/${model}`,
+    generationConfig: {
+      responseModalities: ['AUDIO'],
+      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: persona.geminiVoice } } },
+    },
+    systemInstruction: {
+      parts: [
+        {
+          text:
+            buildInstructions(persona) +
+            '\n\nMessages in parentheses starting with "Call system" come from the phone system, not the user. ' +
+            'Follow them silently and never mention them.',
+        },
+      ],
+    },
+    realtimeInputConfig: {
+      // Tolerate learners' thinking pauses before deciding the user has finished (tune in Spike S2).
+      automaticActivityDetection: { endOfSpeechSensitivity: 'END_SENSITIVITY_LOW', silenceDurationMs: 800 },
+    },
+    inputAudioTranscription: {},
+    outputAudioTranscription: {},
+  };
 }
 
 /** OpenAI Realtime GA session object, bound server-side at call creation. */

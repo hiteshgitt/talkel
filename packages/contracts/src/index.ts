@@ -45,7 +45,7 @@ export type PocConnectResponse = z.infer<typeof PocConnectResponse>;
 export const PocCallStatus = z.enum(['CONNECTING', 'ACTIVE', 'ENDED', 'FAILED']);
 export type PocCallStatus = z.infer<typeof PocCallStatus>;
 
-export const PocEndReason = z.enum(['USER_ENDED', 'TIME_LIMIT', 'PROVIDER_CLOSED', 'ERROR']);
+export const PocEndReason = z.enum(['USER_ENDED', 'TIME_LIMIT', 'PROVIDER_CLOSED', 'CONNECTION_LOST', 'ERROR']);
 export type PocEndReason = z.infer<typeof PocEndReason>;
 
 export const TranscriptTurn = z.object({

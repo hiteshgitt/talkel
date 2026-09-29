@@ -68,11 +68,14 @@ export class RealtimeCall {
         return;
       }
 
-      const pc = new RTCPeerConnection({});
+      // STUN lets the phone find a public address when it isn't on the server's LAN.
+      const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
       this.pc = pc;
       for (const track of this.mic.getAudioTracks()) pc.addTrack(track, this.mic);
 
-      // The provider requires this channel; we only read VAD/audio-buffer events from it for UI.
+      // Event channel to whichever peer answers: our voice gateway (Gemini mode) sends
+      // `floor` / `call.ended`; OpenAI (openai mode) sends its own VAD events. Only used for UI.
+      // OpenAI requires this exact label; our gateway accepts any.
       const events = pc.createDataChannel('oai-events');
       events.onopen = () => void this.onMediaReady();
       // The library types message events as a bare Event; at runtime they carry `data`.
@@ -141,13 +144,22 @@ export class RealtimeCall {
 
   private onProviderEvent(data: unknown): void {
     if (typeof data !== 'string') return;
-    let type: unknown;
+    let event: { type?: unknown; floor?: unknown };
     try {
-      type = (JSON.parse(data) as { type?: unknown }).type;
+      event = JSON.parse(data) as typeof event;
     } catch {
       return;
     }
-    switch (type) {
+    switch (event.type) {
+      // Our voice gateway (provider-agnostic)
+      case 'floor':
+        if (event.floor === 'user' || event.floor === 'ai' || event.floor === 'none') this.set({ floor: event.floor });
+        break;
+      case 'call.ended':
+        // Server ended the call (time limit, provider closed): wrap up like a normal hang-up.
+        void this.hangUp();
+        break;
+      // OpenAI Realtime direct mode
       case 'input_audio_buffer.speech_started':
         this.set({ floor: 'user' });
         break;

@@ -1,12 +1,10 @@
 import type { PocCallStatus, PocEndReason, PocTranscriptResponse } from '@speakai/contracts';
-import { normalizeRealtimeEvent, type RealtimeEvent, type RealtimeUsage } from '../realtime/realtime-events.js';
+import { normalizeRealtimeEvent, type RealtimeEvent } from '../realtime/realtime-events.js';
 import type { SidebandConnection } from '../realtime/sideband.js';
 import { TranscriptAssembler } from '../realtime/transcript-assembler.js';
+import { addUsage, type CallEventLog, emptyUsage, type LiveCall } from './live-call.js';
 
-export interface CallEventLog {
-  write(entry: { t: number; dir: 'in' | 'out' | 'sys'; event: unknown }): void;
-  close(): void;
-}
+export type { CallEventLog } from './live-call.js';
 
 export interface CallSessionDeps {
   callId: string;
@@ -24,10 +22,11 @@ export interface CallSessionDeps {
 const WRAP_UP_LEAD_MS = 60_000;
 
 /**
+ * OpenAI Realtime variant (media device ⇄ OpenAI over WebRTC, control via sideband).
  * Owns one live POC call: consumes sideband events, builds the transcript, enforces the
  * time limit and ends the call exactly once. Deliberately free of Nest/DI so it is unit-testable.
  */
-export class CallSession {
+export class CallSession implements LiveCall {
   private readonly now: () => number;
   private readonly startedAt: number;
   private readonly transcript = new TranscriptAssembler();
@@ -36,13 +35,7 @@ export class CallSession {
   private endReason: PocEndReason | null = null;
   private endedAt: number | null = null;
   private greeted = false;
-  readonly usage: RealtimeUsage = {
-    inputTextTokens: 0,
-    inputAudioTokens: 0,
-    cachedInputTokens: 0,
-    outputTextTokens: 0,
-    outputAudioTokens: 0,
-  };
+  readonly usage = emptyUsage();
 
   constructor(private readonly deps: CallSessionDeps) {
     this.now = deps.now ?? (() => performance.now());
@@ -176,13 +169,6 @@ export class CallSession {
   }
 }
 
-function addUsage(total: RealtimeUsage, u: RealtimeUsage): void {
-  total.inputTextTokens += u.inputTextTokens;
-  total.inputAudioTokens += u.inputAudioTokens;
-  total.cachedInputTokens += u.cachedInputTokens;
-  total.outputTextTokens += u.outputTextTokens;
-  total.outputAudioTokens += u.outputAudioTokens;
-}
 
 /** Audio payloads (base64) would bloat logs and are never needed for analysis. */
 function redactAudio(raw: unknown): unknown {

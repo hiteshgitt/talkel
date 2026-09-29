@@ -31,6 +31,8 @@ describe('loadEnv', () => {
     const env = loadEnv({ POC_DEV_TOKEN: 'x'.repeat(16) });
     expect(env).toMatchObject({
       PORT: 4810,
+      REALTIME_PROVIDER: 'gemini',
+      GEMINI_LIVE_MODEL: 'gemini-3.8-live',
       REALTIME_MODEL: 'gpt-realtime-2.1',
       REALTIME_TRANSCRIBE_MODEL: 'gpt-transcribe',
     });

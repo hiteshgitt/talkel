@@ -2,12 +2,26 @@ import { existsSync, readFileSync } from 'node:fs';
 import { parseEnv } from 'node:util';
 import { z } from 'zod';
 
+const optionalSecret = z
+  .string()
+  .optional()
+  .transform((v) => (v && v.trim() !== '' ? v.trim() : undefined));
+
 const EnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(4810),
-  OPENAI_API_KEY: z
-    .string()
-    .optional()
-    .transform((v) => (v && v.trim() !== '' ? v.trim() : undefined)),
+  /**
+   * gemini: phone ⇄ our WebRTC gateway ⇄ Gemini Live (WebSocket).
+   * openai: phone ⇄ OpenAI Realtime (WebRTC) directly, with our server on the sideband.
+   */
+  REALTIME_PROVIDER: z.enum(['gemini', 'openai']).default('gemini'),
+  GEMINI_API_KEY: optionalSecret,
+  GEMINI_LIVE_MODEL: z.string().min(1).default('gemini-3.8-live'),
+  GEMINI_LIVE_URL: z
+    .url()
+    .default('wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent'),
+  /** Comma-separated STUN/TURN URLs for the server-side WebRTC endpoint (gemini mode). */
+  RTC_ICE_SERVERS: z.string().default('stun:stun.l.google.com:19302'),
+  OPENAI_API_KEY: optionalSecret,
   OPENAI_BASE_URL: z.url().default('https://api.openai.com/v1'),
   REALTIME_MODEL: z.string().min(1).default('gpt-realtime-2.1'),
   REALTIME_TRANSCRIBE_MODEL: z.string().min(1).default('gpt-transcribe'),

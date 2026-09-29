@@ -128,13 +128,14 @@ const post = (url: string, body?: unknown, token: string | null = TOKEN) =>
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 
-describe('POC call lifecycle (fake OpenAI)', () => {
+describe('POC call lifecycle — OpenAI provider (fake OpenAI)', () => {
   let fake: FakeOpenAI;
   let api: { base: string; proc: ChildProcess };
 
   beforeAll(async () => {
     fake = await startFakeOpenAI();
     api = await startApi({
+      REALTIME_PROVIDER: 'openai',
       OPENAI_API_KEY: 'sk-fake',
       OPENAI_BASE_URL: fake.url,
       CALL_LOG_DIR: mkdtempSync(join(tmpdir(), 'speakai-calllogs-')),

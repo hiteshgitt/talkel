@@ -15,7 +15,6 @@
   },
   "devDependencies": {
     "turbo": "^2.11.5",
-    "typescript": "~6.0.3",
-    "werift": "^0.24.4"
+    "typescript": "~6.0.3"
   }
 }

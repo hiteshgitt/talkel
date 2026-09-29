@@ -69,6 +69,28 @@ The sideband WebSocket is stateful and lives for the whole call. It is held by o
 
 ---
 
+### 3a. Gemini Live mode — our server as the voice gateway (current default, 2026-09-29)
+
+The product owner chose **Gemini Live** for M0 because the OpenAI account has no credits. Gemini Live is **WebSocket-only** (16 kHz PCM16 in, 24 kHz PCM16 out). It has no WebRTC call that a sideband could attach to, and its **session config cannot be changed mid-session**. So in this mode our server terminates the phone's WebRTC itself:
+
+```text
+Phone (react-native-webrtc: AEC, jitter buffer, Opus)
+   │  WebRTC (Opus, UDP)           ▲ data channel: {type:"floor"}, {type:"call.ended"}
+   ▼                               │
+apps/api — WebRtcEndpoint (werift) ── decode Opus → 16 kHz PCM ──▶ Gemini Live (WSS)
+         — PcmPacer (20 ms, real time) ◀── encode Opus ◀── 24 kHz PCM ──┘
+         — GeminiCallSession: transcripts, timers, barge-in (drop queued audio), limits
+```
+
+- **The phone app is unchanged.** It sends its SDP offer to `/v1/poc/connect`, and the answer now comes from our server instead of OpenAI.
+- **Server authority is stronger than in sideband mode**: we are in the media path. Barge-in is implemented by flushing our playback queue when Gemini reports `interrupted`.
+- **Greeting and wrap-up** are sent as bracketed "call system" text cues (`clientContent`), because Gemini can't update `systemInstruction` mid-session.
+- **Cost:** about 0.7 ms of CPU per 20 ms frame for Opus decode and encode (`opusscript`, WASM), roughly 3% of one core per call.
+- **Network requirement:** the phone must reach **our server over UDP**. That works on the same LAN. Over mobile data, the server needs a public IP or a **TURN** server (`RTC_ICE_SERVERS`). This is not needed in OpenAI mode, where media goes to OpenAI's public edge.
+- **Selection:** `REALTIME_PROVIDER=gemini|openai`. OpenAI mode (§3) is kept intact for when credits are available.
+
+Measured results are in [spikes/M0-REPORT.md](spikes/M0-REPORT.md).
+
 ## 4. Turn-taking & interruption
 
 | Concern | Approach |

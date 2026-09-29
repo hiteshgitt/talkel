@@ -7,20 +7,20 @@ This covers how to run the POC on a real Android phone and collect the numbers f
 | Piece | Where | Status |
 |---|---|---|
 | Shared API contracts (Zod) | `packages/contracts` | ✅ built |
-| API: SDP proxy, sideband control, AI-speaks-first, wrap-up + hard stop, transcript, per-call JSONL log | `apps/api` | ✅ 28 unit + 5 e2e tests (e2e uses a fake OpenAI server) |
+| API, **Gemini mode (default)**: WebRTC voice gateway ⇄ Gemini Live, AI-speaks-first, barge-in, wrap-up + hard stop, transcript, per-call JSONL log | `apps/api` | ✅ unit tests + **live call against real Gemini passed** (see M0-REPORT) |
+| API, OpenAI mode: SDP proxy + sideband | `apps/api` | ✅ unit + e2e against a fake OpenAI (live run blocked: account has no credits) |
 | Android app: setup → call screen (mute, speaker, timer, speaking/listening ring) → transcript | `apps/mobile` | ✅ typecheck, lint, expo-doctor, Android JS bundle. ⏳ Not yet run on a device |
-| Call report (latency, turns, tokens) | `scripts/call-report.ts` | ✅ |
-
-Not tested yet, because a real key and a device are needed: a live OpenAI call and actual audio on a phone.
+| Headless live call test (latency, barge-in, transcript) | `apps/api/scripts/spike-call.ts` | ✅ |
+| Call report from JSONL logs | `scripts/call-report.ts` | OpenAI-mode logs only |
 
 ## What you need
 
-1. **OpenAI API key** with Realtime access → `apps/api/.env`
+1. **Provider key** in `apps/api/.env`: `GEMINI_API_KEY` (default mode), or `OPENAI_API_KEY` with `REALTIME_PROVIDER=openai`
 2. **Expo account** (free) → for `eas build` of the development build
 3. **Android phone** (Android 10+), ideally also one low-to-mid-range device
-4. The phone must reach the API over the network (only signalling goes there; audio goes straight to OpenAI). Use one of:
-   - the same LAN as the server: `http://<server-lan-ip>:4810/v1` (dev builds allow HTTP), or
-   - an HTTPS tunnel (e.g. `cloudflared tunnel --url http://localhost:4810`) if the phone is on mobile data (recommended for the 4G latency test).
+4. **Network.** In Gemini mode the phone's **audio goes to this server** over WebRTC (UDP), so:
+   - **same Wi-Fi/LAN as the server** (simplest): `EXPO_PUBLIC_API_URL=http://<server-lan-ip>:4810/v1` (dev builds allow HTTP)
+   - on mobile data, the server needs a public IP or a TURN server (`RTC_ICE_SERVERS`). An HTTP tunnel alone is not enough, because it only carries signalling.
 
 ## Run it
 
@@ -31,8 +31,11 @@ pnpm build                    # contracts + api
 
 # API
 cp apps/api/.env.example apps/api/.env
-#   set OPENAI_API_KEY and POC_DEV_TOKEN (openssl rand -hex 24)
+#   set GEMINI_API_KEY and POC_DEV_TOKEN (openssl rand -hex 24)
 pnpm --filter @speakai/api start       # or: dev (watch mode)
+
+# Optional: headless live call against the real provider (no phone needed)
+cd apps/api && node scripts/spike-call.ts female && cd ../..
 
 # Mobile — one-time development build (cloud build, installs as an APK)
 cd apps/mobile
@@ -54,13 +57,7 @@ pnpm start                    # Metro; open the SpeakAI dev app on the phone and
 7. Lock the screen for 30 s mid-call (Spike S4; background survival is not handled yet, so this is expected to fail).
 8. End the call and check that the transcript order and "(interrupted)" markers look right.
 
-After each call:
-
-```bash
-node scripts/call-report.ts apps/api/logs/calls/<callId>.jsonl
-```
-
-Record system latency p50/p90, barge-ins, and token usage (for the cost-per-10-min estimate, S5).
+After each call, the per-call event log is at `apps/api/logs/calls/<callId>.jsonl`, and the API log line on call end shows the turn count and token usage. `scripts/call-report.ts` currently parses OpenAI-mode logs only. Record your perceived latency, any echo self-interruptions and the transcript accuracy in `M0-REPORT.md`.
 
 ## Known limitations of this POC (by design)
 

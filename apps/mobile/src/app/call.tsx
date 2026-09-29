@@ -18,9 +18,14 @@ export default function CallScreen() {
 
   const endCall = useCallback(async () => {
     const callId = await call?.hangUp();
-    if (callId) router.replace({ pathname: '/transcript/[callId]', params: { callId } });
-    else router.back();
+    if (!callId) router.back(); // never connected: nothing to show
   }, [call]);
+
+  // Whoever ended the call (user, time limit, server), show its transcript.
+  const endedCallId = state?.phase === 'ended' ? state.callId : null;
+  useEffect(() => {
+    if (endedCallId) router.replace({ pathname: '/transcript/[callId]', params: { callId: endedCallId } });
+  }, [endedCallId]);
 
   // Hardware back behaves like "end call" rather than silently leaving a live call.
   useEffect(() => {

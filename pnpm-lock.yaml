@@ -14,9 +14,6 @@ importers:
       typescript:
         specifier: ~6.0.3
         version: 6.0.3
-      werift:
-        specifier: ^0.24.4
-        version: 0.24.4
 
   apps/api:
     dependencies:
@@ -32,12 +29,18 @@ importers:
       '@speakai/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      opusscript:
+        specifier: ^0.1.1
+        version: 0.1.1
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2
       rxjs:
         specifier: ^7.8.1
         version: 7.8.2
+      werift:
+        specifier: ^0.24.4
+        version: 0.24.4
       ws:
         specifier: ^8.22.0
         version: 8.22.0
@@ -3947,6 +3950,9 @@ packages:
   optionator@0.9.4:
     resolution: {integrity: sha512-6IpQ7mKUxRcZNLIObR0hz7lxsapSSIYNZJwXPGeF0mTVqGKFIXj1DQcMoT22S3ROcLyY/rz0PWaWZ9ayWmad9g==}
     engines: {node: '>= 0.8.0'}
+
+  opusscript@0.1.1:
+    resolution: {integrity: sha512-mL0fZZOUnXdZ78woRXp18lApwpp0lF5tozJOD1Wut0dgrA9WuQTgSels/CSmFleaAZrJi/nci5KOVtbuxeWoQA==}
 
   ora@3.4.0:
     resolution: {integrity: sha512-eNwHudNbO1folBP3JsZ19v9azXWtQZjICdr3Q0TDPIaeBQ3mXLrh54wM+er0+hSp+dWKf+Z8KM58CYzEyIYxYg==}
@@ -9665,6 +9671,8 @@ snapshots:
       prelude-ls: 1.2.1
       type-check: 0.4.0
       word-wrap: 1.2.5
+
+  opusscript@0.1.1: {}
 
   ora@3.4.0:
     dependencies:
