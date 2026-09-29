@@ -1,0 +1,51 @@
+# Security & Privacy
+
+**Status:** Proposed — pending approval.
+
+## 1. Threat model (MVP)
+
+| Asset | Threat | Control |
+|---|---|---|
+| Provider API key | Extracted from app → unlimited spend | The key exists **only on the server**. The device never receives a provider credential because SDP is proxied (VOICE-ARCHITECTURE §3). If we use the ephemeral-key fallback, keys are session-bound and expire in 60 s or less. |
+| AI spend | Scripted abuse of free tier, bot sign-ups, never-ending calls | Verified email or Google before the first call. Per-user daily seconds quota. One active call per user. Server-side hard duration cap + heartbeat timeout. Per-IP and per-device rate limits on sign-up and create. Global daily spend circuit breaker (`GLOBAL_DAILY_COST_LIMIT`) that disables free-tier calls and alerts. |
+| Conversation data (voice/transcripts) | Cross-user access (IDOR) | All queries scoped by `userId` in the repository layer (a `forUser(userId)` helper). Integration tests assert 404 on other users' ids for **every** `:id` route. |
+| Hidden scenario params / prompts | Leaked to client, letting users game scenarios | Catalog DTOs are whitelist-mapped. Contract tests assert no `params`, `goals` or `promptTemplate` fields appear in public responses. |
+| Admin panel | Privilege escalation | `RolesGuard` on every `/admin` route, admin role only via seed/DB, admin actions audit-logged. |
+| Persona jailbreak via speech ("ignore your instructions…") | Harmful/off-policy output in voice | Safety layer always included. Provider moderation. Personas are constrained ("difficult" means disagreeable, never abusive). User-reported issue button after each call. Output transcripts are sampled into an offline moderation review. |
+| Evaluation prompt injection (the transcript contains instructions) | Manipulated scores/feedback | Transcript passed as clearly delimited **data**. Structured output + Zod + grounding checks. Scores are not security-relevant. |
+| Auth tokens | Theft | Mobile: `expo-secure-store` (Android Keystore). Web: httpOnly Secure cookies, CSRF protection for cookie-authenticated mutating routes. Rotating sessions, 30-day expiry, revocable server-side. |
+
+## 2. Baseline controls
+
+- HTTPS everywhere and HSTS on web. The WebSocket uses `wss` only.
+- Passwords are hashed by Better Auth (scrypt/argon2 by default). Plaintext passwords are never stored or logged.
+- Input validation: Zod at every boundary (HTTP, WS, provider events, LLM output, env).
+- Security headers: `helmet` on the API, Next.js headers config on web. CORS allow-list from `CORS_ORIGINS`.
+- Rate limiting: Redis-backed sliding window. Defaults: auth 10/min/IP, create-conversation 10/hour/user, general 120/min/user.
+- Secrets live only in platform env stores. `.env*` is git-ignored. `gitleaks` runs in CI.
+- Dependencies: Renovate/Dependabot, `pnpm audit` in CI, pinned lockfile.
+- Logging: structured, with `userId`/`sessionId` correlation. **Transcript text, audio and tokens are never logged.** Sentry scrubs request bodies on conversation routes.
+- **Local dev note:** this repo currently sits inside Apache's `DocumentRoot` (`/var/www/html`). A root `.htaccess` with `Require all denied` has been added so `.env` files and source are never served over HTTP. Moving the repo outside the web root is still preferred.
+
+## 3. Privacy (PRD §52–53)
+
+| Data | Default | Retention | User control |
+|---|---|---|---|
+| Live audio | **Not stored** by us. Streamed to the AI provider only. | — | — |
+| Retained audio (opt-in, or the S3 fallback) | Off | `SESSION_ONLY` = deleted after analysis. `DAYS_30` = lifecycle rule. | Setting + per-session delete |
+| Transcripts & analysis | Stored | Until the user deletes the session/account | Delete session, delete account, export |
+| Usage records | Stored | With account. Anonymised daily roll-ups kept. | Deleted with account |
+
+- **Provider processing:** the privacy notice must state that audio and transcripts are processed by the AI provider under its API data-usage terms. Under standard API terms, data is not used for training by default, but may be retained short-term for abuse monitoring. We will evaluate Zero Data Retention eligibility before public launch.
+- **India DPDP Act 2023:** needs explicit, itemised consent at onboarding (voice processing, transcript storage), a grievance contact, erasure (implemented via DELETE endpoints) and breach-notification readiness. Legal review is required before public launch.
+- **Minimum age:** set a minimum age in the terms (18+ recommended for MVP, to avoid the DPDP children's-data requirements).
+- **Corporate (future):** managers see only aggregated progress, never transcripts, unless the employee explicitly shares them.
+- **Admin access to transcripts:** off by default. A "break-glass" debug view requires a reason and is audit-logged.
+
+## 4. Security test requirements (subset of PRD §69)
+
+- Authorisation matrix test: each route × {anonymous, other user, owner, admin}.
+- Quota and duration enforcement under a client that never sends end/heartbeat.
+- Catalog DTO leakage test (hidden params).
+- LLM output validation failure path (malformed JSON → retry → FAILED, never a crash).
+- Account deletion removes all rows and objects (verified with DB and bucket inspection in an integration test).
