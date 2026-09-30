@@ -2,17 +2,16 @@
  * Boots the compiled API (dist/main.js) against a fake OpenAI Realtime server and drives
  * the full POC call lifecycle over HTTP. Needs `nest build` first (the test:e2e script does it).
  */
-import { type ChildProcess, spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdtempSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { type ApiProcess, DEV_TOKEN as TOKEN, startApi } from './support/api-process.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { WebSocketServer, type WebSocket } from 'ws';
 
-const TOKEN = 'e2e-dev-token-0123456789';
 
 interface FakeOpenAI {
   url: string;
@@ -96,30 +95,6 @@ function readBody(req: IncomingMessage): Promise<string> {
   });
 }
 
-async function startApi(env: Record<string, string>): Promise<{ base: string; proc: ChildProcess }> {
-  const port = String(20000 + Math.floor(Math.random() * 20000));
-  const proc = spawn(process.execPath, ['dist/main.js'], {
-    cwd: join(import.meta.dirname, '..'),
-    // Never read apps/api/.env here: it may hold a real key/base URL, and these tests must only
-    // ever talk to the fake provider.
-    env: { PATH: process.env.PATH ?? '', PORT: port, POC_DEV_TOKEN: TOKEN, DOTENV_PATH: '/nonexistent/.env', ...env },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  let output = '';
-  proc.stdout?.on('data', (d: Buffer) => (output += d.toString()));
-  proc.stderr?.on('data', (d: Buffer) => (output += d.toString()));
-  const base = `http://127.0.0.1:${port}/v1`;
-  for (let i = 0; i < 100; i++) {
-    try {
-      if ((await fetch(`${base}/health`)).ok) return { base, proc };
-    } catch {
-      /* not up yet */
-    }
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  proc.kill();
-  throw new Error(`API did not start:\n${output}`);
-}
 
 const post = (url: string, body?: unknown, token: string | null = TOKEN) =>
   fetch(url, {
@@ -130,7 +105,7 @@ const post = (url: string, body?: unknown, token: string | null = TOKEN) =>
 
 describe('POC call lifecycle — OpenAI provider (fake OpenAI)', () => {
   let fake: FakeOpenAI;
-  let api: { base: string; proc: ChildProcess };
+  let api: ApiProcess;
 
   beforeAll(async () => {
     fake = await startFakeOpenAI();
@@ -143,7 +118,7 @@ describe('POC call lifecycle — OpenAI provider (fake OpenAI)', () => {
   });
 
   afterAll(async () => {
-    api?.proc.kill();
+    api?.stop();
     await fake?.close();
   });
 
@@ -151,7 +126,7 @@ describe('POC call lifecycle — OpenAI provider (fake OpenAI)', () => {
     const res = await post(`${api.base}/poc/connect`, { sdpOffer: 'v=0', voice: 'female' }, null);
     expect(res.status).toBe(401);
     expect(res.headers.get('content-type')).toContain('application/problem+json');
-    expect(await res.json()).toMatchObject({ code: 'UNAUTHORIZED' });
+    expect(await res.json()).toMatchObject({ code: 'UNAUTHENTICATED' });
   });
 
   it('validates the body', async () => {
@@ -211,7 +186,7 @@ describe('POC without a provider key', () => {
       expect(res.status).toBe(503);
       expect(await res.json()).toMatchObject({ code: 'PROVIDER_NOT_CONFIGURED' });
     } finally {
-      api.proc.kill();
+      api.stop();
     }
   });
 });

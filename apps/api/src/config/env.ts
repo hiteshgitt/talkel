@@ -9,6 +9,21 @@ const optionalSecret = z
 
 const EnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(4810),
+
+  // ── Core (M1) ──
+  DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
+  /** Public base URL of this API, as phones/browsers reach it (used in email links and OAuth redirects). */
+  APP_BASE_URL: z.url(),
+  /** Web app origin (sign-in pages, dashboard). Trusted for auth requests. */
+  WEB_BASE_URL: z.url(),
+  /** Mobile deep-link scheme (app.json "scheme"). Trusted for auth callbacks. */
+  MOBILE_SCHEME: z.string().regex(/^[a-z][a-z0-9+.-]*$/).default('speakai'),
+  BETTER_AUTH_SECRET: z.string().min(32, 'BETTER_AUTH_SECRET must be at least 32 characters (openssl rand -hex 32)'),
+  GOOGLE_CLIENT_ID: optionalSecret,
+  GOOGLE_CLIENT_SECRET: optionalSecret,
+  /** e.g. smtp://localhost:1027 (Mailpit in dev). Empty: emails are written to the log instead. */
+  SMTP_URL: optionalSecret,
+  EMAIL_FROM: z.string().min(3).default('SpeakAI <no-reply@speakai.local>'),
   /**
    * gemini: phone ⇄ our WebRTC gateway ⇄ Gemini Live (WebSocket).
    * openai: phone ⇄ OpenAI Realtime (WebRTC) directly, with our server on the sideband.
@@ -32,7 +47,15 @@ const EnvSchema = z.object({
   OPENAI_BASE_URL: z.url().default('https://api.openai.com/v1'),
   REALTIME_MODEL: z.string().min(1).default('gpt-realtime-2.1'),
   REALTIME_TRANSCRIBE_MODEL: z.string().min(1).default('gpt-transcribe'),
-  POC_DEV_TOKEN: z.string().min(16, 'POC_DEV_TOKEN must be at least 16 characters'),
+  /**
+   * Optional static token for headless test scripts (scripts/spike-call.ts) on the voice routes.
+   * Real users authenticate with a Better Auth session.
+   */
+  POC_DEV_TOKEN: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.trim() !== '' ? v.trim() : undefined))
+    .refine((v) => v === undefined || v.length >= 16, 'POC_DEV_TOKEN must be at least 16 characters'),
   POC_MAX_SESSION_SECONDS: z.coerce.number().int().min(90).max(3600).default(300),
   CALL_LOG_DIR: z.string().min(1).default('./logs/calls'),
 });

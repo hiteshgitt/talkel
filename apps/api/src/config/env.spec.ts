@@ -28,7 +28,13 @@ describe('withDotEnv', () => {
 
 describe('loadEnv', () => {
   it('applies defaults and rejects a short dev token', () => {
-    const env = loadEnv({ POC_DEV_TOKEN: 'x'.repeat(16) });
+    const required = {
+      DATABASE_URL: 'postgresql://u:p@localhost:5432/db',
+      APP_BASE_URL: 'http://localhost:4810',
+      WEB_BASE_URL: 'http://localhost:3100',
+      BETTER_AUTH_SECRET: 's'.repeat(32),
+    };
+    const env = loadEnv(required);
     expect(env).toMatchObject({
       PORT: 4810,
       REALTIME_PROVIDER: 'gemini',
@@ -37,6 +43,9 @@ describe('loadEnv', () => {
       REALTIME_TRANSCRIBE_MODEL: 'gpt-transcribe',
     });
     expect(env.OPENAI_API_KEY).toBeUndefined();
-    expect(() => loadEnv({ POC_DEV_TOKEN: 'short' })).toThrow(/POC_DEV_TOKEN/);
+    expect(env.POC_DEV_TOKEN).toBeUndefined();
+    expect(() => loadEnv({ ...required, POC_DEV_TOKEN: 'short' })).toThrow(/POC_DEV_TOKEN/);
+    expect(() => loadEnv({ ...required, BETTER_AUTH_SECRET: 'too-short' })).toThrow(/BETTER_AUTH_SECRET/);
+    expect(() => loadEnv({})).toThrow(/DATABASE_URL/);
   });
 });

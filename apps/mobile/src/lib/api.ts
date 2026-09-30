@@ -1,13 +1,16 @@
 import {
+  Me,
+  type OnboardingRequest,
   PocConnectResponse,
   PocTranscriptResponse,
   ProblemDetails,
   type PocConnectRequest,
+  type ProfilePatch,
+  type SettingsPatch,
 } from '@speakai/contracts';
 import type { z } from 'zod';
-
-const API_URL = process.env.EXPO_PUBLIC_API_URL ?? '';
-const DEV_TOKEN = process.env.EXPO_PUBLIC_POC_DEV_TOKEN ?? '';
+import { authClient } from './auth-client';
+import { API_URL } from './config';
 
 export class ApiError extends Error {
   constructor(
@@ -20,33 +23,37 @@ export class ApiError extends Error {
   }
 }
 
-export function apiConfigProblem(): string | null {
-  if (!API_URL) return 'EXPO_PUBLIC_API_URL is not set (see apps/mobile/.env.example).';
-  if (!DEV_TOKEN) return 'EXPO_PUBLIC_POC_DEV_TOKEN is not set (see apps/mobile/.env.example).';
-  return null;
-}
+type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
 
+/** Calls our API with the signed-in user's session cookie and validates the response. */
 async function request<S extends z.ZodType>(
   path: string,
-  init: { method: 'GET' | 'POST'; body?: unknown },
+  init: { method: Method; body?: unknown },
   schema: S | null,
 ): Promise<z.infer<S>> {
+  const cookie = await authClient.getCookie();
   let res: Response;
   try {
     res = await fetch(`${API_URL}${path}`, {
       method: init.method,
       headers: {
-        Authorization: `Bearer ${DEV_TOKEN}`,
+        ...(cookie ? { Cookie: cookie } : {}),
         ...(init.body === undefined ? {} : { 'Content-Type': 'application/json' }),
       },
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
+      credentials: 'omit', // the cookie is sent explicitly above
     });
   } catch {
     throw new ApiError('Could not reach the server. Check your connection.', 0, 'NETWORK');
   }
 
   const text = await res.text();
-  const json: unknown = text ? JSON.parse(text) : null;
+  let json: unknown = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    // non-JSON error page
+  }
   if (!res.ok) {
     const problem = ProblemDetails.safeParse(json);
     throw new ApiError(
@@ -57,6 +64,13 @@ async function request<S extends z.ZodType>(
   }
   return schema ? schema.parse(json) : (undefined as z.infer<S>);
 }
+
+export const api = {
+  me: () => request('/me', { method: 'GET' }, Me),
+  completeOnboarding: (body: OnboardingRequest) => request('/me/onboarding', { method: 'POST', body }, Me),
+  updateProfile: (body: ProfilePatch) => request('/me/profile', { method: 'PATCH', body }, Me),
+  updateSettings: (body: SettingsPatch) => request('/me/settings', { method: 'PATCH', body }, Me),
+};
 
 export const pocApi = {
   connect: (body: PocConnectRequest) => request('/poc/connect', { method: 'POST', body }, PocConnectResponse),

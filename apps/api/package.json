@@ -12,10 +12,15 @@
     "test:e2e": "nest build && vitest run --config ./vitest.config.e2e.ts"
   },
   "dependencies": {
+    "@better-auth/expo": "^1.7.6",
     "@nestjs/common": "^12.1.1",
     "@nestjs/core": "^12.1.1",
     "@nestjs/platform-express": "^12.1.1",
     "@speakai/contracts": "workspace:*",
+    "@speakai/db": "workspace:*",
+    "better-auth": "^1.7.6",
+    "express": "^5.2.1",
+    "nodemailer": "^10.0.12",
     "opusscript": "^0.1.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
@@ -28,7 +33,10 @@
     "@nestjs/schematics": "^12.0.0",
     "@types/express": "^5.0.0",
     "@types/node": "^24.0.0",
+    "@types/nodemailer": "^8.0.2",
+    "@types/pg": "^8.23.1",
     "@types/ws": "^8.18.2",
+    "pg": "^8.23.0",
     "typescript": "~6.0.3",
     "vitest": "^4.1.2"
   }

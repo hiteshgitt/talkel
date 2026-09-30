@@ -31,6 +31,11 @@ AI replies → user interrupts mid-sentence → AI stops and continues naturally
 
 ## Milestone 1 — Foundation
 
+> **Status (2026-09-30): done**, apart from the items marked *deferred*.
+> - **Built:** monorepo + CI; docker-compose (Postgres, Redis, Mailpit); `packages/db` (Prisma 7, first migration, test DB); API auth (Better Auth: email/password + verification + reset, Google ready once credentials exist); global session guard (secure by default); `/v1/me`, onboarding, profile and settings endpoints; `/v1/admin/stats` (admin role); health with a DB check; per-client rate limits; voice calls scoped to their owner; mobile sign-in/up, email verification with deep link back to the app, onboarding (level, goals, EN/HI feedback, consent) and the 5 tabs; web sign-in/up, password reset, dashboard and admin.
+> - **Tests:** 53 unit + 16 API e2e (real Postgres), mobile/web typecheck + lint, web production build.
+> - **Deferred:** pino structured logging and Sentry (no DSN yet); Renovate; an API ESLint config; Google sign-in (needs OAuth credentials from Google Cloud); account deletion/export (M4 as planned).
+
 - Monorepo hardened: `packages/config` (tsconfig, eslint, prettier), Turborepo pipelines, GitHub Actions CI (lint, typecheck, test, build), gitleaks, Renovate.
 - `docker-compose.yml` (Postgres, Redis). `packages/db` with the Prisma schema from DATABASE.md, migrations and seed.
 - `packages/contracts`: env schemas, API DTOs, error codes.

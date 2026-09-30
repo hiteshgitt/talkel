@@ -25,6 +25,109 @@ export type VoiceChoice = z.infer<typeof VoiceChoice>;
 export const Speaker = z.enum(['USER', 'AI']);
 export type Speaker = z.infer<typeof Speaker>;
 
+// ───────────── Users, profile, onboarding (M1) ─────────────
+
+export const EnglishLevel = z.enum(['BEGINNER', 'INTERMEDIATE', 'UPPER_INTERMEDIATE', 'ADVANCED', 'EXPERT']);
+export type EnglishLevel = z.infer<typeof EnglishLevel>;
+
+export const LearningGoal = z.enum([
+  'daily_conversation',
+  'job_interviews',
+  'work_meetings',
+  'client_calls',
+  'presentations',
+  'travel',
+  'exams_migration',
+  'confidence',
+]);
+export type LearningGoal = z.infer<typeof LearningGoal>;
+
+/** Language for feedback explanations. Conversations themselves are always in English. */
+export const FeedbackLanguage = z.enum(['en', 'hi']);
+export type FeedbackLanguage = z.infer<typeof FeedbackLanguage>;
+
+export const VoiceGender = z.enum(['FEMALE', 'MALE', 'NEUTRAL']);
+export type VoiceGender = z.infer<typeof VoiceGender>;
+
+/** Bump when the privacy/consent notice text changes; users are asked to agree again. */
+export const CONSENT_VERSION = '2026-09-30';
+
+export const UserRole = z.enum(['user', 'admin']);
+export type UserRole = z.infer<typeof UserRole>;
+
+export const Me = z.object({
+  user: z.object({
+    id: z.string(),
+    name: z.string(),
+    email: z.string(),
+    emailVerified: z.boolean(),
+    role: UserRole,
+  }),
+  profile: z.object({
+    displayName: z.string().nullable(),
+    nativeLanguage: z.string().nullable(),
+    selfReportedLevel: EnglishLevel.nullable(),
+    goals: z.array(LearningGoal),
+    timezone: z.string(),
+    onboardedAt: z.string().nullable(),
+    consentVersion: z.string().nullable(),
+  }),
+  settings: z.object({
+    feedbackLanguage: FeedbackLanguage,
+    liveCorrection: z.boolean(),
+    defaultDifficulty: EnglishLevel,
+    defaultDurationSec: z.number().int(),
+    preferredVoiceGender: VoiceGender.nullable(),
+    notificationsEnabled: z.boolean(),
+  }),
+  /** True once onboarding is complete and the current consent notice was accepted. */
+  onboarded: z.boolean(),
+});
+export type Me = z.infer<typeof Me>;
+
+export const OnboardingRequest = z.object({
+  displayName: z.string().trim().min(1).max(60).optional(),
+  level: EnglishLevel,
+  goals: z.array(LearningGoal).min(1).max(8),
+  feedbackLanguage: FeedbackLanguage,
+  nativeLanguage: z.string().trim().min(2).max(10).optional(),
+  /** Must be the literal current version: proves the user saw this notice. */
+  consentVersion: z.literal(CONSENT_VERSION),
+});
+export type OnboardingRequest = z.infer<typeof OnboardingRequest>;
+
+export const ProfilePatch = z
+  .object({
+    displayName: z.string().trim().min(1).max(60).nullable(),
+    nativeLanguage: z.string().trim().min(2).max(10).nullable(),
+    selfReportedLevel: EnglishLevel,
+    goals: z.array(LearningGoal).min(1).max(8),
+    timezone: z.string().min(1).max(64),
+  })
+  .partial()
+  .strict();
+export type ProfilePatch = z.infer<typeof ProfilePatch>;
+
+export const SettingsPatch = z
+  .object({
+    feedbackLanguage: FeedbackLanguage,
+    liveCorrection: z.boolean(),
+    defaultDifficulty: EnglishLevel,
+    defaultDurationSec: z.number().int().min(120).max(1800),
+    preferredVoiceGender: VoiceGender.nullable(),
+    notificationsEnabled: z.boolean(),
+  })
+  .partial()
+  .strict();
+export type SettingsPatch = z.infer<typeof SettingsPatch>;
+
+/** Public: which sign-in methods the server has enabled (e.g. Google only when configured). */
+export const AuthConfig = z.object({
+  emailPassword: z.boolean(),
+  google: z.boolean(),
+});
+export type AuthConfig = z.infer<typeof AuthConfig>;
+
 // ───────────── Milestone 0: voice POC ─────────────
 // Minimal surface to prove the realtime loop. Replaced by /v1/conversations in M2.
 

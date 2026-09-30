@@ -2,7 +2,7 @@
 
 > Working name. The architecture is independent of the brand (PRD §89).
 
-**Status: architecture approved (2026-09-29). Milestone 0 (voice POC) is next.**
+**Status:** architecture approved (2026-09-29). Milestone 0 (voice POC on Gemini Live) is proven on a real phone. **Milestone 1 (foundation) is done (2026-09-30).** Milestone 2 is next.
 
 ## Decisions confirmed by the product owner
 

@@ -29,7 +29,7 @@ const RECENT_OPENINGS_TO_AVOID = 6; // per server for now; per user once convers
 @Injectable()
 export class PocCallsService implements OnApplicationShutdown {
   private readonly logger = new Logger(PocCallsService.name);
-  private readonly calls = new Map<string, LiveCall>();
+  private readonly calls = new Map<string, { call: LiveCall; owner: string }>();
   private readonly openai: OpenAICallsClient | null;
   private readonly recentSituations: string[] = [];
 
@@ -41,35 +41,35 @@ export class PocCallsService implements OnApplicationShutdown {
     this.logger.log(`realtime provider: ${env.REALTIME_PROVIDER}${configured ? '' : ' (NOT CONFIGURED — connect returns 503)'}`);
   }
 
-  async connect(req: PocConnectRequest): Promise<PocConnectResponse> {
+  async connect(req: PocConnectRequest, owner: string): Promise<PocConnectResponse> {
     if (this.activeCount() >= MAX_CONCURRENT_CALLS) {
       throw new ProblemException(HttpStatus.TOO_MANY_REQUESTS, 'TOO_MANY_ACTIVE_CALLS', 'Too many active calls');
     }
     const { call, sdpAnswer } =
       this.env.REALTIME_PROVIDER === 'gemini' ? await this.connectGemini(req) : await this.connectOpenAI(req);
 
-    this.calls.set(call.callId, call);
+    this.calls.set(call.callId, { call, owner });
     call.start();
     this.logger.log(`call ${call.callId} connected (provider=${this.env.REALTIME_PROVIDER}, voice=${req.voice})`);
     return { callId: call.callId, sdpAnswer, maxDurationSec: this.env.POC_MAX_SESSION_SECONDS };
   }
 
-  markReady(callId: string): void {
-    this.get(callId).markMediaReady();
+  markReady(callId: string, owner: string): void {
+    this.get(callId, owner).markMediaReady();
   }
 
-  async end(callId: string): Promise<PocTranscriptResponse> {
-    const call = this.get(callId);
+  async end(callId: string, owner: string): Promise<PocTranscriptResponse> {
+    const call = this.get(callId, owner);
     await call.end('USER_ENDED');
     return call.snapshot();
   }
 
-  transcript(callId: string): PocTranscriptResponse {
-    return this.get(callId).snapshot();
+  transcript(callId: string, owner: string): PocTranscriptResponse {
+    return this.get(callId, owner).snapshot();
   }
 
   async onApplicationShutdown(): Promise<void> {
-    await Promise.all([...this.calls.values()].map((c) => c.end('ERROR')));
+    await Promise.all([...this.calls.values()].map(({ call }) => call.end('ERROR')));
   }
 
   // ───────────── Gemini Live: phone ⇄ our WebRTC gateway ⇄ Gemini (WebSocket) ─────────────
@@ -214,21 +214,24 @@ export class PocCallsService implements OnApplicationShutdown {
     this.pruneEnded();
   }
 
-  private get(callId: string): LiveCall {
-    const call = this.calls.get(callId);
-    if (!call) throw new ProblemException(HttpStatus.NOT_FOUND, 'CALL_NOT_FOUND', 'Call not found');
-    return call;
+  /** Another user's call is reported as not found (404, not 403) so call ids can't be probed. */
+  private get(callId: string, owner: string): LiveCall {
+    const entry = this.calls.get(callId);
+    if (!entry || entry.owner !== owner) {
+      throw new ProblemException(HttpStatus.NOT_FOUND, 'CALL_NOT_FOUND', 'Call not found');
+    }
+    return entry.call;
   }
 
   private activeCount(): number {
     let n = 0;
-    for (const c of this.calls.values()) if (!c.isEnded) n++;
+    for (const { call } of this.calls.values()) if (!call.isEnded) n++;
     return n;
   }
 
   private pruneEnded(): void {
-    const ended = [...this.calls.values()].filter((c) => c.isEnded);
-    for (const c of ended.slice(0, Math.max(0, ended.length - MAX_RETAINED_ENDED))) this.calls.delete(c.callId);
+    const ended = [...this.calls.values()].filter(({ call }) => call.isEnded);
+    for (const { call } of ended.slice(0, Math.max(0, ended.length - MAX_RETAINED_ENDED))) this.calls.delete(call.callId);
   }
 }
 

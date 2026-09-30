@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+/* Calm, dark, voice-first palette shared with the mobile app (PRD §59). */
+@theme {
+  --color-bg: #0f1115;
+  --color-surface: #191c22;
+  --color-raised: #232730;
+  --color-fg: #f2f3f5;
+  --color-muted: #9aa0aa;
+  --color-accent: #6e8bff;
+  --color-success: #4cc38a;
+  --color-danger: #e5484d;
+  --color-line: #2c313b;
+  --font-sans: var(--font-geist-sans);
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+}

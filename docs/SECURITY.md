@@ -27,6 +27,16 @@
 - Logging: structured, with `userId`/`sessionId` correlation. **Transcript text, audio and tokens are never logged.** Sentry scrubs request bodies on conversation routes.
 - **Local dev note:** this repo currently sits inside Apache's `DocumentRoot` (`/var/www/html`). A root `.htaccess` with `Require all denied` has been added so `.env` files and source are never served over HTTP. Moving the repo outside the web root is still preferred.
 
+## 2a. Implementation notes (Milestone 1)
+
+- **Secure by default:** a global `SessionGuard` requires a Better Auth session on every route. Routes opt out explicitly with `@Public()` (health, auth-config). Admin routes use `@Roles('admin')`. The admin role can only be granted with `apps/api/scripts/make-admin.ts`. Sign-up ignores a client-sent `role` (e2e-tested).
+- **Email verification is required** before any session exists. Password-reset links revoke existing sessions.
+- **Trusted origins:** the web origin and the `speakai://` app scheme. Requests from any other `Origin`, and redirects to foreign `callbackURL`s, are rejected (tested).
+- **Rate limits per client IP:** Better Auth reads the IP only from an internal header (`x-speakai-client-ip`) that `main.ts` always overwrites with the socket address (or the forwarded address from the loopback Next.js proxy). A client can't spoof its way into a fresh rate-limit bucket (e2e-tested). Without this, Better Auth fell back to one global bucket.
+- **Web cookies are first-party:** the browser talks only to the web origin, and Next.js rewrites `/v1/*` to the API. Cookies are `HttpOnly; SameSite=Lax`.
+- **Mobile session storage:** SecureStore (Android Keystore). After email verification, Better Auth's Expo plugin passes the new session to the app inside the `speakai://` deep link (`?cookie=…`). The session therefore briefly appears in a URL on the device. This is the library's design; if it becomes a concern, drop `autoSignInAfterVerification` and have users sign in after verifying.
+- **Voice calls** are held per owner. Another user's call id returns 404, so ids can't be probed.
+
 ## 3. Privacy (PRD §52–53)
 
 | Data | Default | Retention | User control |

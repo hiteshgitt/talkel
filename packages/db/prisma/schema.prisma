@@ -1,0 +1,143 @@
+// SpeakAI database schema (Prisma ORM 7). See docs/DATABASE.md for the full design;
+// tables are added milestone by milestone. M1: identity, profile, settings.
+
+generator client {
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  runtime                = "nodejs"
+  moduleFormat           = "esm"
+  // The package is compiled with tsc (NodeNext), so generated imports need .js extensions.
+  importFileExtension    = "js"
+  generatedFileExtension = "ts"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────── Identity (Better Auth core tables) ─────────────
+// Field names follow Better Auth's core schema; do not rename without updating the auth config.
+
+model User {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  /// "user" | "admin". Server-owned: Better Auth is configured with input: false.
+  role          String    @default("user")
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
+
+  sessions Session[]
+  accounts Account[]
+  profile  Profile?
+  settings UserSettings?
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  expiresAt DateTime @db.Timestamptz(3)
+  token     String   @unique
+  ipAddress String?
+  userAgent String?
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Account {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  accountId             String
+  providerId            String
+  userId                String    @db.Uuid
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime? @db.Timestamptz(3)
+  refreshTokenExpiresAt DateTime? @db.Timestamptz(3)
+  scope                 String?
+  /// Password hash for the "credential" provider. Never plaintext.
+  password              String?
+  createdAt             DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Verification {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  identifier String
+  value      String
+  expiresAt  DateTime @db.Timestamptz(3)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([identifier])
+  @@map("verifications")
+}
+
+// ───────────── Profile & settings ─────────────
+
+enum EnglishLevel {
+  BEGINNER
+  INTERMEDIATE
+  UPPER_INTERMEDIATE
+  ADVANCED
+  EXPERT
+}
+
+enum AudioRetention {
+  NONE
+  SESSION_ONLY
+  DAYS_30
+}
+
+enum VoiceGender {
+  FEMALE
+  MALE
+  NEUTRAL
+}
+
+model Profile {
+  userId            String        @id @db.Uuid
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  displayName       String?
+  /// BCP-47, e.g. "hi", "mr", "ta"
+  nativeLanguage    String?
+  selfReportedLevel EnglishLevel?
+  /// e.g. ["interviews", "work_meetings"] — values validated by @speakai/contracts
+  goals             String[]      @default([])
+  timezone          String        @default("Asia/Kolkata")
+  onboardedAt       DateTime?     @db.Timestamptz(3)
+  /// Consent to voice processing and transcript storage (India DPDP Act). Version of the notice agreed to.
+  consentVersion    String?
+  consentedAt       DateTime?     @db.Timestamptz(3)
+  updatedAt         DateTime      @updatedAt @db.Timestamptz(3)
+
+  @@map("profiles")
+}
+
+model UserSettings {
+  userId               String         @id @db.Uuid
+  user                 User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Language for feedback explanations: "en" | "hi" in the MVP. Conversations are always English.
+  feedbackLanguage     String         @default("en")
+  liveCorrection       Boolean        @default(false)
+  audioRetention       AudioRetention @default(NONE)
+  defaultDifficulty    EnglishLevel   @default(INTERMEDIATE)
+  defaultDurationSec   Int            @default(600)
+  preferredVoiceGender VoiceGender?
+  notificationsEnabled Boolean        @default(true)
+  updatedAt            DateTime       @updatedAt @db.Timestamptz(3)
+
+  @@map("user_settings")
+}
