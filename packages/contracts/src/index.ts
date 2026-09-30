@@ -47,7 +47,17 @@ export const VoiceGender = z.enum(['FEMALE', 'MALE', 'NEUTRAL']);
 export type VoiceGender = z.infer<typeof VoiceGender>;
 
 /** Bump when the privacy/consent notice text changes; users are asked to agree again. */
-export const CONSENT_VERSION = '2026-09-30';
+export const CONSENT_VERSION = '2026-10-01';
+
+export const Plan = z.enum(['FREE', 'PRO']);
+export type Plan = z.infer<typeof Plan>;
+
+/** Best-effort accent for the AI voice (never scored — PRD §16). */
+export const Accent = z.enum(['AMERICAN', 'BRITISH', 'INDIAN', 'AUSTRALIAN']);
+export type Accent = z.infer<typeof Accent>;
+
+export const VoicePreference = z.enum(['FEMALE', 'MALE', 'RANDOM']);
+export type VoicePreference = z.infer<typeof VoicePreference>;
 
 export const UserRole = z.enum(['user', 'admin']);
 export type UserRole = z.infer<typeof UserRole>;
@@ -59,7 +69,10 @@ export const Me = z.object({
     email: z.string(),
     emailVerified: z.boolean(),
     role: UserRole,
+    plan: Plan,
   }),
+  /** What the plan allows. Free: the partner's voice and accent are chosen at random. */
+  entitlements: z.object({ choosePartner: z.boolean(), chooseAccent: z.boolean() }),
   profile: z.object({
     displayName: z.string().nullable(),
     nativeLanguage: z.string().nullable(),
@@ -77,10 +90,15 @@ export const Me = z.object({
     preferredVoiceGender: VoiceGender.nullable(),
     notificationsEnabled: z.boolean(),
   }),
-  /** True once onboarding is complete and the current consent notice was accepted. */
+  /** True once onboarding (level, goals, language) is complete. */
   onboarded: z.boolean(),
+  /** True when the user must (re-)accept the current privacy notice before using the app. */
+  consentRequired: z.boolean(),
 });
 export type Me = z.infer<typeof Me>;
+
+export const ConsentRequest = z.object({ consentVersion: z.literal(CONSENT_VERSION) });
+export type ConsentRequest = z.infer<typeof ConsentRequest>;
 
 export const OnboardingRequest = z.object({
   displayName: z.string().trim().min(1).max(60).optional(),
@@ -165,7 +183,11 @@ export type Quota = z.infer<typeof Quota>;
 
 export const CreateConversationRequest = z.object({
   scenarioId: z.string().uuid(),
-  personaId: z.string().uuid(),
+  /** A specific partner (Pro). Otherwise one is picked at random, filtered by `voice`. */
+  personaId: z.string().uuid().optional(),
+  voice: VoicePreference.optional(),
+  /** A specific accent (Pro), or random. */
+  accent: z.union([Accent, z.literal('RANDOM')]).optional(),
   difficulty: EnglishLevel.optional(),
   durationSec: z.number().int().min(60).max(1800).optional(),
   liveCorrection: z.boolean().optional(),
@@ -200,6 +222,7 @@ export const CreateConversationResponse = z.object({
   id: z.string(),
   brief: ConversationBrief,
   persona: PersonaSummary,
+  accent: Accent,
   difficulty: EnglishLevel,
   /** Planned length, already capped by the remaining daily allowance. */
   durationSec: z.number().int(),
@@ -249,7 +272,17 @@ export type TranscriptTurn = z.infer<typeof TranscriptTurn>;
 
 // ───────────── Conversation detail ─────────────
 
+export const RecordingInfo = z.object({
+  /** True while the call is still recording or being finalised. */
+  inProgress: z.boolean(),
+  durationMs: z.number().int().nullable(),
+  bytes: z.number().int().nullable(),
+});
+export type RecordingInfo = z.infer<typeof RecordingInfo>;
+
 export const ConversationDetail = ConversationSummary.extend({
+  accent: Accent,
+  recording: RecordingInfo.nullable(),
   brief: ConversationBrief,
   goals: z.array(z.object({ id: z.string(), description: z.string(), achieved: z.boolean() })),
   turns: z.array(TranscriptTurn),

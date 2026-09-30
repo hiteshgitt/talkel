@@ -83,3 +83,27 @@ describe('SpeechLevelDetector', () => {
     expect(d.push(quiet)).toBe('stop');
   });
 });
+
+describe('LoudnessNormalizer', () => {
+  const rmsOf = (b: Buffer) => rmsLevel(b);
+
+  it('brings quiet speech up towards the target without touching silence', async () => {
+    const { LoudnessNormalizer } = await import('./loudness.js');
+    const n = new LoudnessNormalizer(0.12);
+    let out: Buffer = Buffer.alloc(0);
+    for (let i = 0; i < 40; i++) out = n.process(tone(480, 0.05)); // quiet speech, ~0.035 RMS
+    expect(rmsOf(out)).toBeGreaterThan(0.09);
+    expect(rmsOf(n.process(Buffer.alloc(960)))).toBe(0);
+  });
+
+  it('never clips: loud input is soft-limited below full scale', async () => {
+    const { LoudnessNormalizer, softLimit } = await import('./loudness.js');
+    const n = new LoudnessNormalizer(0.5, 3);
+    const out = n.process(tone(480, 0.99));
+    let peak = 0;
+    for (let i = 0; i < out.length / 2; i++) peak = Math.max(peak, Math.abs(out.readInt16LE(i * 2)));
+    expect(peak).toBeLessThan(32767);
+    expect(softLimit(0.5)).toBe(0.5);
+    expect(softLimit(5)).toBeLessThan(1);
+  });
+});

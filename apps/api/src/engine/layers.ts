@@ -2,7 +2,7 @@
  * Instruction layers that are the same for every scenario (docs/AI-ARCHITECTURE.md §3).
  * Bump a layer's version string whenever its text changes; each session records the versions it used.
  */
-import type { EnglishLevel, LearningGoal } from '@speakai/contracts';
+import type { Accent, EnglishLevel, LearningGoal } from '@speakai/contracts';
 
 export const LAYER_VERSIONS = {
   core: 'core-v3',
@@ -11,6 +11,7 @@ export const LAYER_VERSIONS = {
   difficulty: 'difficulty-v1',
   learner: 'learner-v1',
   tools: 'tools-v2',
+  accent: 'accent-v1',
 } as const;
 
 export const CORE = `
@@ -91,6 +92,17 @@ export function learnerLayer(goals: readonly LearningGoal[]): string | null {
     'Never mention that you are doing this.'
   );
 }
+
+/**
+ * Accent is a best-effort voice hint (voices have a fixed timbre), plus matching vocabulary.
+ * Pronunciation of the learner is never judged against it (PRD §16).
+ */
+export const ACCENT: Record<Accent, string> = {
+  AMERICAN: 'Speak with a clear, neutral American English accent and use American vocabulary (apartment, elevator, vacation).',
+  BRITISH: 'Speak with a clear, neutral British English accent and use British vocabulary (flat, lift, holiday).',
+  INDIAN: 'Speak with a clear Indian English accent and natural Indian English phrasing, as an educated urban Indian speaker would.',
+  AUSTRALIAN: 'Speak with a clear, friendly Australian English accent and use common Australian expressions sparingly.',
+};
 
 export const TOOLS_GUIDANCE = `
 You have tools that report progress to the phone system. Use them silently — never mention them or say you are using them.

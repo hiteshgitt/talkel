@@ -2,7 +2,7 @@ import type { CreateConversationResponse } from '@speakai/contracts';
 import { useQueryClient } from '@tanstack/react-query';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
-import { LEVEL_LABEL } from '@/components/pickers';
+import { ACCENT_LABEL, LEVEL_LABEL } from '@/components/pickers';
 import { Body, Button, Card, ErrorText, Screen, Title } from '@/components/ui';
 import { createdConversationKey, formatMinutes } from '@/lib/queries';
 import { colors } from '@/theme';
@@ -39,7 +39,7 @@ export default function BriefScreen() {
       <View style={styles.facts}>
         <Fact label="You are" value={created.brief.userRole} />
         <Fact label="Your goal" value={created.brief.objective} />
-        <Fact label="Talking to" value={`${created.persona.name} — ${created.persona.description}`} />
+        <Fact label="Talking to" value={`${created.persona.name} (${ACCENT_LABEL[created.accent]} accent) — ${created.persona.description}`} />
         <Fact label="Level · length" value={`${LEVEL_LABEL[created.difficulty]} · up to ${formatMinutes(created.durationSec)}`} />
       </View>
 

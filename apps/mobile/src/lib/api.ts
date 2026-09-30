@@ -13,7 +13,7 @@ import {
   Quota,
   type SettingsPatch,
 } from '@speakai/contracts';
-import type { z } from 'zod';
+import { z } from 'zod';
 import { authClient } from './auth-client';
 import { API_URL } from './config';
 
@@ -91,7 +91,15 @@ export const api = {
   connect: (id: string, body: ConnectRequest) => request(`${conv(id)}/connect`, { method: 'POST', body }, ConnectResponse),
   ready: (id: string) => request(`${conv(id)}/ready`, { method: 'POST' }, null),
   end: (id: string) => request(`${conv(id)}/end`, { method: 'POST' }, ConversationDetail),
+
+  acceptConsent: (consentVersion: string) => request('/me/consent', { method: 'POST', body: { consentVersion } }, Me),
+  setRecording: (id: string, on: boolean) => request(`${conv(id)}/recording`, { method: 'POST', body: { on } }, RecordingToggle),
+  deleteRecording: (id: string) => request(`${conv(id)}/recording`, { method: 'DELETE' }, null),
+  /** Streamed by the audio player with the session cookie as a header. */
+  recordingUrl: (id: string) => `${API_URL}${conv(id)}/recording`,
 };
+
+const RecordingToggle = z.object({ recording: z.boolean() });
 
 /** Friendly text for the API's error codes that users can hit in normal use. */
 export function friendlyError(err: unknown): string {
@@ -99,6 +107,7 @@ export function friendlyError(err: unknown): string {
     if (err.code === 'QUOTA_EXCEEDED') return 'You’ve used today’s free practice time. It resets at midnight.';
     if (err.code === 'ACTIVE_CONVERSATION_EXISTS') return 'You already have a conversation in progress.';
     if (err.code === 'SESSION_NOT_CONNECTABLE') return 'This conversation expired. Please start a new one.';
+    if (err.code === 'CONSENT_REQUIRED') return 'Please accept the updated privacy notice (Profile) to record calls.';
     if (err.code === 'PROVIDER_QUOTA_EXHAUSTED' || err.code === 'PROVIDER_UNAVAILABLE') return 'The AI voice service is busy. Please try again in a moment.';
     return err.message;
   }

@@ -1,5 +1,5 @@
 import { Body, Controller, Get, HttpCode, Patch, Post } from '@nestjs/common';
-import { type Me, OnboardingRequest, ProfilePatch, SettingsPatch } from '@speakai/contracts';
+import { ConsentRequest, type Me, OnboardingRequest, ProfilePatch, SettingsPatch } from '@speakai/contracts';
 import { CurrentUser, type SessionUser } from '../auth/auth.decorators.js';
 import { parseBody } from '../common/problem.js';
 import { UsersService } from './users.service.js';
@@ -18,6 +18,13 @@ export class UsersController {
   @HttpCode(200)
   onboarding(@CurrentUser() user: SessionUser, @Body() body: unknown): Promise<Me> {
     return this.users.completeOnboarding(user.id, parseBody(OnboardingRequest, body));
+  }
+
+  /** Accept the current privacy notice (after it changed). */
+  @Post('consent')
+  @HttpCode(200)
+  consent(@CurrentUser() user: SessionUser, @Body() body: unknown): Promise<Me> {
+    return this.users.acceptConsent(user.id, parseBody(ConsentRequest, body).consentVersion);
   }
 
   @Patch('profile')

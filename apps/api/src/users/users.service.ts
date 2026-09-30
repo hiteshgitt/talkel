@@ -5,6 +5,7 @@ import {
   FeedbackLanguage,
   LearningGoal,
   type Me,
+  Plan,
   type OnboardingRequest,
   type ProfilePatch,
   type SettingsPatch,
@@ -47,6 +48,13 @@ export class UsersService {
     return this.me(userId);
   }
 
+  /** Accepting an updated privacy notice without redoing onboarding. */
+  async acceptConsent(userId: string, consentVersion: string): Promise<Me> {
+    await this.ensureRows(userId);
+    await this.prisma.profile.update({ where: { userId }, data: { consentVersion, consentedAt: new Date() } });
+    return this.me(userId);
+  }
+
   async updateProfile(userId: string, patch: ProfilePatch): Promise<Me> {
     await this.ensureRows(userId);
     await this.prisma.profile.update({ where: { userId }, data: patch });
@@ -85,7 +93,9 @@ function toMe(user: User, profile: Profile, settings: UserSettings): Me {
       email: user.email,
       emailVerified: user.emailVerified,
       role: UserRole.catch('user').parse(user.role),
+      plan: Plan.catch('FREE').parse(user.plan),
     },
+    entitlements: entitlementsFor(user.plan),
     profile: {
       displayName: profile.displayName,
       nativeLanguage: profile.nativeLanguage,
@@ -104,6 +114,13 @@ function toMe(user: User, profile: Profile, settings: UserSettings): Me {
       preferredVoiceGender: settings.preferredVoiceGender ? VoiceGender.parse(settings.preferredVoiceGender) : null,
       notificationsEnabled: settings.notificationsEnabled,
     },
-    onboarded: profile.onboardedAt !== null && profile.consentVersion === CONSENT_VERSION,
+    onboarded: profile.onboardedAt !== null,
+    consentRequired: profile.consentVersion !== CONSENT_VERSION,
   };
+}
+
+/** Free plan: the partner's voice and accent are picked at random. Pro: the user chooses. */
+export function entitlementsFor(plan: string): Me['entitlements'] {
+  const pro = plan === 'PRO';
+  return { choosePartner: pro, chooseAccent: pro };
 }

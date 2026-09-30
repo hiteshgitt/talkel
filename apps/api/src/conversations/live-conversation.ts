@@ -6,6 +6,7 @@ import { TurnTranscript } from '../gemini/turn-transcript.js';
 import { SpeechLevelDetector } from '../media/pcm.js';
 import type { MediaEndpoint, MediaStats } from '../media/webrtc-endpoint.js';
 import { addUsage, type CallEventLog, emptyUsage } from '../realtime/usage.js';
+import type { CallRecorder, RecordingResult } from '../recording/call-recorder.js';
 import type { RealtimeUsage } from '../realtime/realtime-events.js';
 
 export type LiveStatus = 'CONNECTING' | 'ACTIVE' | 'RECONNECTING' | 'ENDED' | 'FAILED';
@@ -21,6 +22,8 @@ export interface LiveSnapshot {
   stateChanges: Record<string, string | number>;
   usage: RealtimeUsage;
   media: MediaStats | null;
+  /** Recording state: `result` is set once the file is finalised (call ended). */
+  recording: { active: boolean; started: boolean; result: RecordingResult | null };
 }
 
 export interface LiveConversationDeps {
@@ -37,6 +40,8 @@ export interface LiveConversationDeps {
   onEvent?: (type: string, atMs: number, payload?: Record<string, unknown>) => void;
   onEnded?: (s: LiveSnapshot) => void;
   onError?: (message: string) => void;
+  /** Creates the recorder the first time the user starts recording. */
+  createRecorder?: () => Promise<CallRecorder>;
   now?: () => number;
   reconnectGraceMs?: number;
   flushIntervalMs?: number;
@@ -73,6 +78,9 @@ export class LiveConversation {
   private userSpeaking = false;
   private aiPlaying = false;
   private endScheduled = false;
+  private recorder: CallRecorder | null = null;
+  private recorderPending: Promise<CallRecorder> | null = null;
+  private recordingResult: RecordingResult | null = null;
 
   constructor(private readonly deps: LiveConversationDeps) {
     this.now = deps.now ?? (() => performance.now());
@@ -119,6 +127,7 @@ export class LiveConversation {
       setTimeout(() => void this.end('TIME_LIMIT'), maxDurationMs),
       setInterval(() => this.deps.onFlush?.(this.snapshot()), this.deps.flushIntervalMs ?? 10_000),
       setInterval(() => this.logSys({ kind: 'media_stats', ...this.media.stats() }), 10_000),
+      setInterval(() => this.recorder?.tick(this.now()), 200),
     );
     this.logSys({ kind: 'started', maxDurationMs });
   }
@@ -150,6 +159,25 @@ export class LiveConversation {
     this.deps.onEvent?.('RECONNECTED', this.elapsedMs());
   }
 
+  /** User-controlled call recording (both voices). Pausing leaves the paused time out of the file. */
+  async setRecording(on: boolean): Promise<boolean> {
+    if (this.isEnded) throw new Error('conversation has ended');
+    if (on) {
+      if (!this.recorder) {
+        if (!this.deps.createRecorder) throw new Error('recording is not available');
+        this.recorderPending ??= this.deps.createRecorder();
+        this.recorder = await this.recorderPending;
+      }
+      this.recorder.resume(this.now());
+    } else {
+      this.recorder?.pause();
+    }
+    const active = this.recorder?.recording ?? false;
+    this.media.sendControl({ type: 'recording', on: active });
+    this.deps.onEvent?.(active ? 'RECORDING_ON' : 'RECORDING_OFF', this.elapsedMs());
+    return active;
+  }
+
   elapsedMs(): number {
     return Math.round(this.now() - (this.startedAtMono ?? this.createdAt));
   }
@@ -167,6 +195,13 @@ export class LiveConversation {
 
     this.media.sendControl({ type: 'call.ended', reason });
     this.deps.live.close();
+    if (this.recorder) {
+      try {
+        this.recordingResult = await this.recorder.finish();
+      } catch (err) {
+        this.deps.onError?.(`recording finalise failed for ${this.id}: ${(err as Error).message}`);
+      }
+    }
     try {
       await this.media.close();
     } catch (err) {
@@ -193,6 +228,7 @@ export class LiveConversation {
       stateChanges: { ...this.stateChanges },
       usage: { ...this.usage },
       media: this.media.stats(),
+      recording: { active: this.recorder?.recording ?? false, started: this.recorder !== null, result: this.recordingResult },
     };
   }
 
@@ -204,6 +240,7 @@ export class LiveConversation {
     media.onUserPcm((pcm) => {
       if (!current()) return;
       this.deps.live.sendUserAudio(pcm);
+      this.recorder?.addUser(pcm, this.now());
       const edge = this.vad.push(pcm);
       if (edge === 'start') {
         this.userSpeaking = true;
@@ -212,6 +249,9 @@ export class LiveConversation {
         this.userSpeaking = false;
       }
       if (edge) this.updateFloor();
+    });
+    media.onAiFrame((pcm) => {
+      if (current()) this.recorder?.addAi(pcm, this.now());
     });
     media.onPlayback((state) => {
       if (!current()) return;

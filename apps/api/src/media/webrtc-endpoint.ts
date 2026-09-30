@@ -7,6 +7,7 @@ import {
   RtpHeader,
   RtpPacket,
 } from 'werift';
+import { LoudnessNormalizer } from './loudness.js';
 import { FRAME_MS, PcmPacer } from './pcm.js';
 
 /**
@@ -21,6 +22,8 @@ export interface MediaEndpoint {
   onUserPcm(handler: (pcm16k: Buffer) => void): void;
   onControlOpen(handler: () => void): void;
   onPlayback(handler: (state: 'started' | 'stopped') => void): void;
+  /** Every 20 ms AI frame at the moment it is sent to the phone (for recording what was heard). */
+  onAiFrame(handler: (pcm24k: Buffer, atMs: number) => void): void;
   onClosed(handler: (reason: string) => void): void;
   playAiPcm(pcm24k: Buffer): void;
   /** Barge-in: drop queued AI audio immediately. */
@@ -56,8 +59,12 @@ const INPUT_RATE = 16000;
 const OUTPUT_RATE = 24000;
 const OPUS_RTP_CLOCK = 48000;
 const DISCONNECT_GRACE_MS = 5000;
-/** Voice-optimised Opus: clearer than the library default, with loss recovery for Wi-Fi/mobile. */
-const OPUS_BITRATE = 48_000;
+/**
+ * AI voice to the phone: full-band "audio" mode (no speech-band processing) at a generous bitrate
+ * and maximum encoder quality, with in-band FEC for Wi-Fi/mobile loss.
+ */
+const OPUS_BITRATE = 64_000;
+const OPUS_SET_COMPLEXITY_REQUEST = 4010;
 const OPUS_SET_INBAND_FEC_REQUEST = 4012;
 const OPUS_SET_PACKET_LOSS_PERC_REQUEST = 4014;
 const EXPECTED_LOSS_PCT = 10;
@@ -66,7 +73,8 @@ const MAX_HOLD_MS = 200;
 
 export class WebRtcEndpoint implements MediaEndpoint {
   private readonly decoder = new OpusScript(INPUT_RATE, 1, OpusScript.Application.VOIP);
-  private readonly encoder = new OpusScript(OUTPUT_RATE, 1, OpusScript.Application.VOIP);
+  private readonly encoder = new OpusScript(OUTPUT_RATE, 1, OpusScript.Application.AUDIO);
+  private readonly loudness = new LoudnessNormalizer();
   private readonly pacer = new PcmPacer(OUTPUT_RATE, { prebufferMs: PREBUFFER_MS, maxHoldMs: MAX_HOLD_MS });
   private readonly counters: MediaStats = {
     playbackUnderruns: 0,
@@ -91,10 +99,12 @@ export class WebRtcEndpoint implements MediaEndpoint {
   private userPcmHandlers: Array<(pcm: Buffer) => void> = [];
   private controlOpenHandlers: Array<() => void> = [];
   private playbackHandlers: Array<(s: 'started' | 'stopped') => void> = [];
+  private aiFrameHandlers: Array<(pcm: Buffer, atMs: number) => void> = [];
   private closedHandlers: Array<(reason: string) => void> = [];
 
   private constructor(private readonly pc: RTCPeerConnection) {
     this.encoder.setBitrate(OPUS_BITRATE);
+    this.encoder.encoderCTL(OPUS_SET_COMPLEXITY_REQUEST, 10);
     this.encoder.encoderCTL(OPUS_SET_INBAND_FEC_REQUEST, 1);
     this.encoder.encoderCTL(OPUS_SET_PACKET_LOSS_PERC_REQUEST, EXPECTED_LOSS_PCT);
   }
@@ -138,6 +148,9 @@ export class WebRtcEndpoint implements MediaEndpoint {
   onPlayback(h: (state: 'started' | 'stopped') => void): void {
     this.playbackHandlers.push(h);
   }
+  onAiFrame(h: (pcm24k: Buffer, atMs: number) => void): void {
+    this.aiFrameHandlers.push(h);
+  }
   onClosed(h: (reason: string) => void): void {
     this.closedHandlers.push(h);
   }
@@ -145,7 +158,7 @@ export class WebRtcEndpoint implements MediaEndpoint {
   playAiPcm(pcm24k: Buffer): void {
     if (this.closed) return;
     this.aiTurnOpen = true;
-    this.pacer.push(pcm24k, performance.now());
+    this.pacer.push(this.loudness.process(pcm24k), performance.now());
   }
 
   /** The provider finished (or abandoned) its reply: running dry after this is not an underrun. */
@@ -243,6 +256,7 @@ export class WebRtcEndpoint implements MediaEndpoint {
   }
 
   private sendFrame(pcm: Buffer, talkSpurtStart: boolean): void {
+    for (const h of this.aiFrameHandlers) h(pcm, performance.now());
     const sender = this.transceiver?.sender;
     if (!sender) return;
     let opus: Buffer;

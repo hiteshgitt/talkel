@@ -62,6 +62,8 @@ const EnvSchema = z.object({
   /** Hard cap on any single conversation, whatever the user asks for. */
   CONVERSATION_MAX_SECONDS: z.coerce.number().int().min(60).max(3600).default(1800),
   CALL_LOG_DIR: z.string().min(1).default('./logs/calls'),
+  /** Local call-recordings directory (development). Production uses S3-compatible storage. */
+  RECORDINGS_DIR: z.string().min(1).default('./storage/recordings'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

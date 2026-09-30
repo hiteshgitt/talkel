@@ -63,6 +63,15 @@ AI replies → user interrupts mid-sentence → AI stops and continues naturally
 
 **Exit:** all 5 scenarios playable end to end; transcripts saved; killing the network mid-call recovers or ends gracefully without data loss; quota enforced.
 
+## Milestone 2.5 — Voice, accent, recording (added at the product owner's request)
+
+> **Status (2026-09-30): server done and tested; app build in progress.**
+> - **Plans:** `users.plan` FREE/PRO. Free gets a random partner and accent; Pro chooses partner, voice (female/male/random) and accent (American/British/Indian/Australian/random), enforced on the server. `apps/api/scripts/set-plan.ts` sets the plan until payments exist.
+> - **Accent:** a best-effort instruction layer (`accent-v1`), never scored.
+> - **Clarity:** Opus full-band "audio" mode at 64 kbps with complexity 10, plus server-side loudness normalization with a soft limiter.
+> - **Recording:** see SECURITY §2b. Verified live: recordings decode fully and contain both voices.
+> - **Consent:** notice updated for recordings, with a one-time re-consent screen.
+
 ## Milestone 3 — Analysis
 
 - Worker entrypoint + BullMQ queues (`analysis`, `learning-profile`, `retention-cleanup`).

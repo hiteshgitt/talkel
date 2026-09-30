@@ -3,9 +3,10 @@
  * everything a live call needs. Pure (no I/O) and deterministic for a given rng/clock.
  */
 import { createHash } from 'node:crypto';
-import type { EnglishLevel, LearningGoal } from '@speakai/contracts';
+import type { Accent, EnglishLevel, LearningGoal } from '@speakai/contracts';
 import { z } from 'zod';
 import {
+  ACCENT,
   CORE,
   DIFFICULTY,
   LAYER_VERSIONS,
@@ -45,6 +46,7 @@ export interface PrepareInput {
   scenario: ScenarioVersionInput;
   persona: PersonaInput;
   difficulty: EnglishLevel;
+  accent: Accent;
   liveCorrection: boolean;
   learnerGoals: readonly LearningGoal[];
   timeZone: string;
@@ -87,6 +89,7 @@ export function prepareConversation(input: PrepareInput): PreparedConversation {
     SAFETY,
     render(input.scenario.promptTemplate),
     input.persona.promptFragment,
+    ACCENT[input.accent],
     DIFFICULTY[input.difficulty],
     learnerLayer(input.learnerGoals),
     TOOLS_GUIDANCE,

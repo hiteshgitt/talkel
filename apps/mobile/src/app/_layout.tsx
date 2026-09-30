@@ -37,6 +37,7 @@ function AppNavigator() {
   }
 
   const onboarded = signedIn && me.data?.onboarded === true;
+  const consentOk = onboarded && me.data?.consentRequired === false;
 
   return (
     <Stack
@@ -53,7 +54,10 @@ function AppNavigator() {
       <Stack.Protected guard={signedIn && !onboarded}>
         <Stack.Screen name="onboarding" />
       </Stack.Protected>
-      <Stack.Protected guard={onboarded}>
+      <Stack.Protected guard={onboarded && !consentOk}>
+        <Stack.Screen name="consent" />
+      </Stack.Protected>
+      <Stack.Protected guard={consentOk}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="scenario/[id]" />
         <Stack.Screen name="brief/[id]" />

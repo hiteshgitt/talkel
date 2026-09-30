@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Query, Req, Res } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import {
   ConnectRequest,
   type ConnectResponse,
@@ -13,6 +14,8 @@ import { AllowDevToken, CurrentUser, type SessionUser } from '../auth/auth.decor
 import { parseBody } from '../common/problem.js';
 import { ConversationsService } from './conversations.service.js';
 import { QuotaService } from './quota.service.js';
+
+const RecordingToggle = z.object({ on: z.boolean() });
 
 const ListQuery = z.object({
   cursor: z.string().uuid().optional(),
@@ -67,6 +70,45 @@ export class ConversationsController {
   @HttpCode(200)
   end(@CurrentUser() user: SessionUser, @Param('id') id: string): Promise<ConversationDetail> {
     return this.conversations.end(user.id, id);
+  }
+
+  /** Start/stop recording the live call (both voices). */
+  @Post('conversations/:id/recording')
+  @HttpCode(200)
+  record(@CurrentUser() user: SessionUser, @Param('id') id: string, @Body() body: unknown): Promise<{ recording: boolean }> {
+    return this.conversations.setRecording(user.id, id, parseBody(RecordingToggle, body).on);
+  }
+
+  /** Streams the owner's recording (Ogg Opus) with HTTP Range support, so players can seek. */
+  @Get('conversations/:id/recording')
+  async recording(@CurrentUser() user: SessionUser, @Param('id') id: string, @Req() req: Request, @Res() res: Response): Promise<void> {
+    const { key, size } = await this.conversations.recordingFile(user.id, id);
+    const headers = {
+      'Content-Type': 'audio/ogg',
+      'Accept-Ranges': 'bytes',
+      'Cache-Control': 'private, no-store',
+      'Content-Disposition': `inline; filename="conversation-${id}.ogg"`,
+    };
+    const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? '');
+    if (range && (range[1] || range[2])) {
+      const start = range[1] ? Number(range[1]) : Math.max(0, size - Number(range[2]));
+      const end = range[1] && range[2] ? Math.min(Number(range[2]), size - 1) : size - 1;
+      if (start >= size || start > end) {
+        res.status(416).set({ 'Content-Range': `bytes */${size}` }).end();
+        return;
+      }
+      res.status(206).set({ ...headers, 'Content-Range': `bytes ${start}-${end}/${size}`, 'Content-Length': String(end - start + 1) });
+      this.conversations.openRecording(key, { start, end }).pipe(res);
+      return;
+    }
+    res.status(200).set({ ...headers, 'Content-Length': String(size) });
+    this.conversations.openRecording(key).pipe(res);
+  }
+
+  @Delete('conversations/:id/recording')
+  @HttpCode(204)
+  deleteRecording(@CurrentUser() user: SessionUser, @Param('id') id: string): Promise<void> {
+    return this.conversations.deleteRecording(user.id, id);
   }
 
   @Delete('conversations/:id')

@@ -7,6 +7,8 @@ import {
   type OnModuleInit,
 } from '@nestjs/common';
 import {
+  Accent,
+  CONSENT_VERSION,
   type ConnectRequest,
   type ConnectResponse,
   type ConversationDetail,
@@ -31,8 +33,11 @@ import { connectGeminiLive, GeminiSetupError, type LiveSession } from '../gemini
 import { buildGeminiSetup } from '../gemini/gemini-setup.js';
 import { WebRtcEndpoint } from '../media/webrtc-endpoint.js';
 import { JsonlCallLog } from '../common/jsonl-call-log.js';
+import { CallRecorder } from '../recording/call-recorder.js';
+import { RECORDING_STORE, recordingKey, type RecordingStore } from '../recording/recording-store.js';
 import { LiveConversation, type LiveSnapshot, type LiveStatus } from './live-conversation.js';
 import { QuotaService } from './quota.service.js';
+import { entitlementsFor } from '../users/users.service.js';
 
 const MIN_REMAINING_TO_START_SEC = 30;
 const CONNECT_WINDOW_MS = 5 * 60_000; // time to read the brief before starting
@@ -71,22 +76,34 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
   constructor(
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     @Inject(ENV) private readonly env: Env,
+    @Inject(RECORDING_STORE) private readonly recordings: RecordingStore,
     private readonly quota: QuotaService,
   ) {}
 
   // ───────────── lifecycle ─────────────
 
   async create(userId: string, req: CreateConversationRequest): Promise<CreateConversationResponse> {
-    const [scenario, persona, user] = await Promise.all([
+    const [scenario, personas, user] = await Promise.all([
       this.prisma.scenario.findFirst({
         where: { id: req.scenarioId, isActive: true, publishedVersionId: { not: null } },
         include: { publishedVersion: true },
       }),
-      this.prisma.persona.findFirst({ where: { id: req.personaId, isActive: true } }),
+      this.prisma.persona.findMany({ where: { isActive: true }, orderBy: { sortOrder: 'asc' } }),
       this.prisma.user.findUniqueOrThrow({ where: { id: userId }, include: { profile: true, settings: true } }),
     ]);
     if (!scenario?.publishedVersion) throw problem(HttpStatus.NOT_FOUND, 'SCENARIO_NOT_FOUND', 'Scenario not found');
-    if (!persona) throw problem(HttpStatus.NOT_FOUND, 'PERSONA_NOT_FOUND', 'Conversation partner not found');
+
+    // Free plan: partner and accent are random. Pro: the user may choose (server-enforced).
+    const { choosePartner, chooseAccent } = entitlementsFor(user.plan);
+    let persona = choosePartner && req.personaId ? personas.find((p) => p.id === req.personaId) : undefined;
+    if (choosePartner && req.personaId && !persona) throw problem(HttpStatus.NOT_FOUND, 'PERSONA_NOT_FOUND', 'Conversation partner not found');
+    if (!persona) {
+      const gender = choosePartner && (req.voice === 'FEMALE' || req.voice === 'MALE') ? req.voice : null;
+      const pool = gender ? personas.filter((p) => p.gender === gender) : personas;
+      persona = pickRandom(pool.length ? pool : personas);
+    }
+    if (!persona) throw problem(HttpStatus.SERVICE_UNAVAILABLE, 'NO_PERSONAS', 'No conversation partners are available');
+    const accent = chooseAccent && req.accent && req.accent !== 'RANDOM' ? req.accent : pickRandom(Accent.options)!;
 
     await this.ensureNoActiveConversation(userId);
 
@@ -110,6 +127,7 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
       scenario: version,
       persona: { id: persona.id, version: persona.version, name: persona.name, promptFragment: persona.promptFragment },
       difficulty,
+      accent,
       liveCorrection,
       learnerGoals,
       timeZone: user.profile?.timezone ?? 'Asia/Kolkata',
@@ -122,6 +140,7 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
         scenarioVersionId: version.id,
         personaId: persona.id,
         difficulty,
+        accent,
         liveCorrection,
         plannedDurationSec: durationSec,
         provider: 'gemini',
@@ -148,6 +167,7 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
         gender: VoiceGender.parse(persona.gender),
         description: persona.description,
       },
+      accent,
       difficulty,
       durationSec,
     };
@@ -226,6 +246,13 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
           this.running.delete(id);
         }),
       onError: (m) => this.logger.warn(m),
+      createRecorder: async () => {
+        const key = recordingKey(userId, id);
+        const out = await this.recordings.openWrite(key);
+        // Record the key immediately, so a crash mid-call still leaves a findable (partial) file.
+        await this.prisma.conversationSession.update({ where: { id }, data: { recordingKey: key } });
+        return new CallRecorder(out);
+      },
     });
     this.running.set(id, run);
     await this.prisma.conversationSession.update({ where: { id }, data: { status: 'CONNECTING', plannedDurationSec: durationSec } });
@@ -252,14 +279,54 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
     return this.detail(userId, id);
   }
 
-  async remove(userId: string, id: string): Promise<void> {
+  /** Starts or pauses recording the live call. Requires the privacy notice that covers recordings. */
+  async setRecording(userId: string, id: string, on: boolean): Promise<{ recording: boolean }> {
     await this.owned(userId, id);
+    const run = this.running.get(id);
+    if (!run || run.userId !== userId || run.convo.isEnded) {
+      throw problem(HttpStatus.CONFLICT, 'CONVERSATION_NOT_LIVE', 'You can only record a call that is in progress');
+    }
+    if (on) {
+      const profile = await this.prisma.profile.findUnique({ where: { userId }, select: { consentVersion: true } });
+      if (profile?.consentVersion !== CONSENT_VERSION) {
+        throw problem(HttpStatus.FORBIDDEN, 'CONSENT_REQUIRED', 'Please accept the updated privacy notice to record calls');
+      }
+    }
+    return { recording: await run.convo.setRecording(on) };
+  }
+
+  /** Where the finished recording is, for streaming. 404 if none, 409 while the call is still live. */
+  async recordingFile(userId: string, id: string): Promise<{ key: string; size: number }> {
+    const session = await this.owned(userId, id);
+    if (this.running.get(id)) throw problem(HttpStatus.CONFLICT, 'RECORDING_IN_PROGRESS', 'The call is still in progress');
+    const size = session.recordingKey ? await this.recordings.size(session.recordingKey) : null;
+    if (!session.recordingKey || !size) throw problem(HttpStatus.NOT_FOUND, 'RECORDING_NOT_FOUND', 'This conversation has no recording');
+    return { key: session.recordingKey, size };
+  }
+
+  openRecording(key: string, range?: { start: number; end: number }) {
+    return this.recordings.openRead(key, range);
+  }
+
+  async deleteRecording(userId: string, id: string): Promise<void> {
+    const session = await this.owned(userId, id);
+    if (this.running.get(id)) throw problem(HttpStatus.CONFLICT, 'RECORDING_IN_PROGRESS', 'End the call before deleting its recording');
+    if (session.recordingKey) await this.recordings.remove(session.recordingKey);
+    await this.prisma.conversationSession.update({
+      where: { id },
+      data: { recordingKey: null, recordingDurationMs: null, recordingBytes: null },
+    });
+  }
+
+  async remove(userId: string, id: string): Promise<void> {
+    const owned = await this.owned(userId, id);
     const run = this.running.get(id);
     if (run) {
       await run.convo.end('USER_ENDED');
       await this.writeChains.get(id);
     }
     this.pending.delete(id);
+    if (owned.recordingKey) await this.recordings.remove(owned.recordingKey);
     await this.prisma.conversationSession.delete({ where: { id } }); // turns/events cascade; usage keeps counting
   }
 
@@ -316,6 +383,12 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
       createdAt: s.createdAt.toISOString(),
       durationMs: live?.durationMs ?? s.durationMs,
       turnCount: turns.length,
+      accent: Accent.catch('INDIAN').parse(s.accent),
+      recording: live?.recording.started
+        ? { inProgress: true, durationMs: null, bytes: null }
+        : s.recordingKey
+          ? { inProgress: false, durationMs: s.recordingDurationMs, bytes: s.recordingBytes }
+          : null,
       brief: {
         title: s.scenarioVersion.title,
         briefing: render(s.scenarioVersion.briefing),
@@ -498,6 +571,9 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
           ...(snap.startedAt ? { startedAt: snap.startedAt } : {}),
           goalsAchieved: snap.goalsAchieved,
           scenarioState,
+          ...(snap.recording.result
+            ? { recordingDurationMs: snap.recording.result.durationMs, recordingBytes: snap.recording.result.bytes }
+            : {}),
         },
       }),
       this.prisma.usageRecord.create({ data: { ...usage, sessionId: id } }),
@@ -507,6 +583,10 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
 }
 
 const isUuid = (id: string) => z.string().uuid().safeParse(id).success;
+
+function pickRandom<T>(list: readonly T[]): T | undefined {
+  return list[Math.floor(Math.random() * list.length)];
+}
 
 function problem(status: HttpStatus, code: string, title: string): ProblemException {
   return new ProblemException(status, code, title);

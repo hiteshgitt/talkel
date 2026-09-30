@@ -26,6 +26,8 @@ model User {
   image         String?
   /// "user" | "admin". Server-owned: Better Auth is configured with input: false.
   role          String   @default("user")
+  /// "FREE" | "PRO". Server-owned; decides entitlements such as choosing the partner and accent.
+  plan          String   @default("FREE")
   createdAt     DateTime @default(now()) @db.Timestamptz(3)
   updatedAt     DateTime @updatedAt @db.Timestamptz(3)
 
@@ -261,31 +263,37 @@ enum Speaker {
 }
 
 model ConversationSession {
-  id                 String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId             String          @db.Uuid
-  user               User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  scenarioVersionId  String          @db.Uuid
-  scenarioVersion    ScenarioVersion @relation(fields: [scenarioVersionId], references: [id])
-  personaId          String          @db.Uuid
-  persona            Persona         @relation(fields: [personaId], references: [id])
-  difficulty         EnglishLevel
-  liveCorrection     Boolean         @default(false)
-  plannedDurationSec Int
-  status             SessionStatus   @default(CREATED)
-  endReason          EndReason?
-  startedAt          DateTime?       @db.Timestamptz(3)
-  endedAt            DateTime?       @db.Timestamptz(3)
-  durationMs         Int?
+  id                  String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId              String          @db.Uuid
+  user                User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scenarioVersionId   String          @db.Uuid
+  scenarioVersion     ScenarioVersion @relation(fields: [scenarioVersionId], references: [id])
+  personaId           String          @db.Uuid
+  persona             Persona         @relation(fields: [personaId], references: [id])
+  difficulty          EnglishLevel
+  liveCorrection      Boolean         @default(false)
+  /// AMERICAN | BRITISH | INDIAN | AUSTRALIAN — best-effort accent hint for the AI voice
+  accent              String          @default("INDIAN")
+  plannedDurationSec  Int
+  status              SessionStatus   @default(CREATED)
+  endReason           EndReason?
+  startedAt           DateTime?       @db.Timestamptz(3)
+  endedAt             DateTime?       @db.Timestamptz(3)
+  durationMs          Int?
   /// Reproducibility (PRD §78): provider/model, prompt layer versions, persona version
-  provider           String
-  model              String
-  promptVersions     Json
-  instructionsHash   String
+  provider            String
+  model               String
+  promptVersions      Json
+  instructionsHash    String
   /// Randomised per session (topic, item, prices…) plus live updates from tools
-  scenarioState      Json
-  goalsAchieved      String[]        @default([])
-  createdAt          DateTime        @default(now()) @db.Timestamptz(3)
-  updatedAt          DateTime        @updatedAt @db.Timestamptz(3)
+  scenarioState       Json
+  goalsAchieved       String[]        @default([])
+  /// Optional user-started call recording (both voices, Ogg Opus): key in the recordings store
+  recordingKey        String?
+  recordingDurationMs Int?
+  recordingBytes      Int?
+  createdAt           DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime        @updatedAt @db.Timestamptz(3)
 
   turns  ConversationTurn[]
   events ConversationEvent[]

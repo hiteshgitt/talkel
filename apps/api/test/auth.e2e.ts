@@ -1,6 +1,7 @@
 /**
  * Accounts, sessions and ownership against a real (test) Postgres and the compiled server.
  */
+import { CONSENT_VERSION } from '@speakai/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type ApiProcess, startApi, WEB_ORIGIN } from './support/api-process.js';
 import * as users from './support/users.js';
@@ -101,7 +102,7 @@ describe('/v1/me', () => {
     const base = { level: 'ADVANCED', goals: ['job_interviews'], feedbackLanguage: 'hi' };
     expect((await post({ ...base, consentVersion: '1999-01-01' })).status).toBe(400);
 
-    const ok = await post({ ...base, consentVersion: '2026-09-30', displayName: 'Bobby' });
+    const ok = await post({ ...base, consentVersion: CONSENT_VERSION, displayName: 'Bobby' });
     expect(ok.status).toBe(200);
     expect(await ok.json()).toMatchObject({
       onboarded: true,

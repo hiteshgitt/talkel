@@ -10,6 +10,7 @@ import { CatalogController } from './conversations/catalog.controller.js';
 import { ConversationsController } from './conversations/conversations.controller.js';
 import { ConversationsService } from './conversations/conversations.service.js';
 import { QuotaService } from './conversations/quota.service.js';
+import { LocalRecordingStore, RECORDING_STORE } from './recording/recording-store.js';
 import { UsersController } from './users/users.controller.js';
 import { UsersService } from './users/users.service.js';
 
@@ -40,7 +41,12 @@ export class AppModule {
         AuthModule,
       ],
       controllers: [HealthController, UsersController, AdminController, CatalogController, ConversationsController],
-      providers: [UsersService, QuotaService, ConversationsService],
+      providers: [
+        UsersService,
+        QuotaService,
+        ConversationsService,
+        { provide: RECORDING_STORE, useFactory: () => new LocalRecordingStore(env.RECORDINGS_DIR) },
+      ],
     };
   }
 }

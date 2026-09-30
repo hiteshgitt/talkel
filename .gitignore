@@ -21,3 +21,6 @@ apps/mobile/ios/
 
 .DS_Store
 **/src/generated/
+
+# call recordings (local dev storage)
+storage/

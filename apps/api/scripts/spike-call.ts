@@ -195,6 +195,8 @@ async function main(): Promise<void> {
     const tGreet = await waitFor(aiSpeaking, 15_000, 'AI greeting');
     results['greeting first audio (after /ready)'] = `${Math.round(tGreet - tReady)} ms`;
     log('AI greeting started');
+    const rec = (await api(`/conversations/${callId}/recording`, { on: true })) as { recording: boolean };
+    log(`recording: ${rec.recording}`);
     await waitFor(() => lastAiRtp > 0 && now() - lastAiRtp > 1200, 30_000, 'greeting end');
     log('AI greeting finished');
 
@@ -236,7 +238,45 @@ async function main(): Promise<void> {
   await pc.close();
   encoder.delete();
 
+  // Fetch the recording and prove it decodes: parse Ogg pages, decode every Opus packet.
+  const recRes = await fetch(`${API}/conversations/${callId}/recording`, { headers: { Authorization: `Bearer ${TOKEN}` } });
+  if (recRes.ok) {
+    const file = Buffer.from(await recRes.arrayBuffer());
+    writeFileSync(join(audioDir, 'last-recording.ogg'), file);
+    const decoder = new OpusScript(24000, 1);
+    let packets = 0;
+    let samples = 0;
+    let energy = 0;
+    for (let off = 0; off < file.length; ) {
+      if (file.toString('ascii', off, off + 4) !== 'OggS') throw new Error(`bad page at ${off}`);
+      const nseg = file.readUInt8(off + 26);
+      const lacing = file.subarray(off + 27, off + 27 + nseg);
+      let pos = off + 27 + nseg;
+      let size = 0;
+      for (const l of lacing) {
+        size += l;
+        if (l < 255) {
+          const pkt = file.subarray(pos, pos + size);
+          pos += size;
+          if (!pkt.toString('ascii', 0, 4).startsWith('Opus')) {
+            const pcm = decoder.decode(pkt);
+            packets++;
+            samples += pcm.length / 2;
+            for (let i = 0; i < pcm.length; i += 2) energy += (pcm.readInt16LE(i) / 32768) ** 2;
+          }
+          size = 0;
+        }
+      }
+      off = pos;
+    }
+    decoder.delete();
+    results['recording (decoded)'] = `${(file.length / 1024).toFixed(1)} KB, ${packets} packets, ${(samples / 24000).toFixed(1)} s, RMS ${Math.sqrt(energy / Math.max(1, samples)).toFixed(3)}`;
+  } else {
+    results['recording'] = `HTTP ${recRes.status}`;
+  }
+
   console.log('\n── Results ─────────────────────────────────────');
+  console.log(`(recording saved to ${join(audioDir, 'last-recording.ogg')})`);
   for (const [k, v] of Object.entries(results)) console.log(`${k.padEnd(58)} ${v}`);
   console.log(`${'AI audio packets received'.padEnd(58)} ${aiRtpCount}`);
   console.log(`${'floor events (UI indicator)'.padEnd(58)} ${floors.join(' ')}`);

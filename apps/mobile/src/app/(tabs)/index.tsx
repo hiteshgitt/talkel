@@ -21,13 +21,15 @@ export default function HomeScreen() {
   const quota = useQuota();
 
   const friendly = catalog.data?.scenarios.find((s) => s.slug === 'friendly-conversation');
-  const persona = catalog.data?.personas.find((p) => p.slug === preferredPersonaSlug(me));
+  const canChoose = me?.entitlements.choosePartner ?? false;
+  const persona = canChoose && me?.settings.preferredVoiceGender ? catalog.data?.personas.find((p) => p.slug === preferredPersonaSlug(me)) : undefined;
   const remaining = quota.data?.remainingSec ?? 0;
   const problem = configProblem() ?? nativeCallingProblem();
 
   // One tap: a relaxed catch-up call with the preferred partner, using the saved defaults.
   const quickStart = useMutation({
-    mutationFn: () => api.createConversation({ scenarioId: friendly!.id, personaId: persona!.id }),
+    mutationFn: () =>
+      api.createConversation({ scenarioId: friendly!.id, ...(persona ? { personaId: persona.id } : {}), voice: 'RANDOM' }),
     onSuccess: (created) => {
       qc.setQueryData(createdConversationKey(created.id), created);
       router.push({ pathname: '/brief/[id]', params: { id: created.id } });
@@ -47,14 +49,14 @@ export default function HomeScreen() {
 
       <Card style={styles.hero}>
         <Text style={styles.heroEyebrow}>Ready when you are</Text>
-        <Text style={styles.heroTitle}>{persona ? `Have a quick chat with ${persona.name}` : 'Have a quick chat'}</Text>
+        <Text style={styles.heroTitle}>{persona ? `Have a quick chat with ${persona.name}` : 'Have a quick chat with a friend'}</Text>
         <Body muted>A relaxed catch-up call with a friend. Just talk — nobody corrects you during the call.</Body>
         <ErrorText>{problem ?? (quickStart.error ? friendlyError(quickStart.error) : null)}</ErrorText>
         <Button
           label="Start conversation"
           onPress={() => quickStart.mutate()}
           loading={quickStart.isPending}
-          disabled={Boolean(problem) || !friendly || !persona || remaining < 30}
+          disabled={Boolean(problem) || !friendly || remaining < 30}
         />
       </Card>
 

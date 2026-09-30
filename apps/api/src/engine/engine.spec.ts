@@ -15,7 +15,7 @@ const seq = (...values: number[]) => {
   return () => values[i++ % values.length]!;
 };
 
-const base = { persona, difficulty: 'INTERMEDIATE' as const, liveCorrection: false, learnerGoals: [], timeZone: 'Asia/Kolkata' };
+const base = { persona, difficulty: 'INTERMEDIATE' as const, accent: 'INDIAN' as const, liveCorrection: false, learnerGoals: [], timeZone: 'Asia/Kolkata' };
 
 describe('seed content × engine', () => {
   // Every variant of every scenario must render with no missing {{placeholders}}.
@@ -61,6 +61,12 @@ describe('seed content × engine', () => {
     expect(on.instructions).toContain(LIVE_CORRECTION);
     expect(on.instructions).toContain('The user is a beginner');
     expect(on.turnTaking.silenceMs).toBeGreaterThan(off.turnTaking.silenceMs);
+  });
+
+  it('adds the accent layer', () => {
+    const p = prepareConversation({ ...base, accent: 'BRITISH', scenario: scenario('friendly-conversation') });
+    expect(p.instructions).toContain('British English accent');
+    expect(p.promptVersions).toMatchObject({ accent: expect.any(String) });
   });
 
   it('records prompt versions for reproducibility', () => {

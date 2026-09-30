@@ -46,6 +46,12 @@ export default function CallScreen() {
       <View style={styles.header}>
         <Text style={styles.scenario}>{params.title ?? 'Conversation'}</Text>
         <CallTimer connectedAt={state.connectedAt} />
+        {state.recording ? (
+          <View style={styles.recBadge} accessibilityLabel="This call is being recorded">
+            <View style={styles.recDot} />
+            <Text style={styles.recText}>Recording</Text>
+          </View>
+        ) : null}
         {state.warningSecondsLeft !== null && state.phase === 'active' ? (
           <Text style={styles.warning} accessibilityLiveRegion="polite">
             About {Math.max(1, Math.round(state.warningSecondsLeft / 60))} minute left
@@ -144,10 +150,21 @@ function CallTimer({ connectedAt }: { connectedAt: number | null }) {
 function Controls({ call, state, onEnd }: { call: RealtimeCall | null; state: CallState; onEnd: () => void }) {
   const busy = state.phase === 'ending' || state.phase === 'ended';
   return (
-    <View style={styles.controls}>
-      <RoundButton label={state.muted ? 'Unmute' : 'Mute'} active={state.muted} onPress={() => call?.toggleMute()} />
-      <RoundButton label="End" danger disabled={busy} onPress={onEnd} />
-      <RoundButton label="Speaker" active={state.speaker} onPress={() => call?.toggleSpeaker()} />
+    <View style={styles.controlsWrap}>
+      {state.recordingError ? <Text style={styles.recError}>{state.recordingError}</Text> : null}
+      <View style={styles.controls}>
+        <RoundButton label={state.muted ? 'Unmute' : 'Mute'} glyph="🎙" active={state.muted} onPress={() => call?.toggleMute()} />
+        <RoundButton
+          label={state.recording ? 'Stop rec.' : 'Record'}
+          glyph={state.recording ? '■' : '●'}
+          active={state.recording}
+          recording
+          disabled={state.phase !== 'active'}
+          onPress={() => void call?.toggleRecording()}
+        />
+        <RoundButton label="End" glyph="✕" danger disabled={busy} onPress={onEnd} />
+        <RoundButton label="Speaker" glyph="🔊" active={state.speaker} onPress={() => call?.toggleSpeaker()} />
+      </View>
     </View>
   );
 }
@@ -166,7 +183,15 @@ function FailedPanel({ state, onDone }: { state: CallState; onDone: () => void }
   );
 }
 
-function RoundButton(props: { label: string; onPress: () => void; active?: boolean; danger?: boolean; disabled?: boolean }) {
+function RoundButton(props: {
+  label: string;
+  glyph: string;
+  onPress: () => void;
+  active?: boolean;
+  danger?: boolean;
+  recording?: boolean;
+  disabled?: boolean;
+}) {
   return (
     <View style={styles.roundWrap}>
       <Pressable
@@ -177,13 +202,13 @@ function RoundButton(props: { label: string; onPress: () => void; active?: boole
         accessibilityState={{ selected: props.active, disabled: props.disabled }}
         style={({ pressed }) => [
           styles.round,
-          props.active && styles.roundActive,
+          props.active && (props.recording ? styles.roundRecording : styles.roundActive),
           props.danger && styles.roundDanger,
           (pressed || props.disabled) && styles.roundPressed,
         ]}
       >
-        <Text style={[styles.roundGlyph, props.active && styles.roundGlyphActive]}>
-          {props.danger ? '✕' : props.label === 'Speaker' ? '🔊' : '🎙'}
+        <Text style={[styles.roundGlyph, props.recording && !props.active && styles.recGlyph, props.active && !props.recording && styles.roundGlyphActive]}>
+          {props.glyph}
         </Text>
       </Pressable>
       <Text style={styles.roundLabel}>{props.label}</Text>
@@ -212,11 +237,18 @@ const styles = StyleSheet.create({
   avatarInitial: { color: colors.text, fontSize: 56, fontWeight: '300' },
   name: { color: colors.text, fontSize: 28, fontWeight: '600' },
   status: { color: colors.textMuted, fontSize: 16, minHeight: 22 },
-  controls: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 24 },
+  controlsWrap: { gap: 10, marginBottom: 24 },
+  controls: { flexDirection: 'row', justifyContent: 'space-around' },
+  recError: { color: colors.danger, fontSize: 13, textAlign: 'center' },
+  roundRecording: { backgroundColor: colors.danger },
+  recGlyph: { color: colors.danger },
+  recBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+  recDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.danger },
+  recText: { color: colors.danger, fontSize: 13, fontWeight: '700' },
   roundWrap: { alignItems: 'center', gap: 8 },
   round: {
-    width: 72,
-    height: 72,
+    width: 64,
+    height: 64,
     borderRadius: radius.pill,
     backgroundColor: colors.surfaceRaised,
     alignItems: 'center',

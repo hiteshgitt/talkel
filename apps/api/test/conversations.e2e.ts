@@ -2,12 +2,14 @@
  * Full conversation lifecycle against the compiled server, a real Postgres, a fake Gemini Live
  * server and a headless WebRTC phone.
  */
+import { CONSENT_VERSION } from '@speakai/contracts';
 import type { Catalog, ConversationDetail, ConversationList, CreateConversationResponse, Quota } from '@speakai/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type ApiProcess, startApi } from './support/api-process.js';
 import { createFakePhone } from './support/fake-phone.js';
 import { type FakeGemini, startFakeGemini } from './support/fake-gemini.js';
 import { sql, verifiedUser } from './support/users.js';
+
 
 let api: ApiProcess;
 let gemini: FakeGemini;
@@ -83,7 +85,11 @@ describe('a full conversation', () => {
     const { sdpAnswer } = (await connectRes.json()) as { sdpAnswer: string };
     const setup = gemini.setups.at(-1)!;
     expect(JSON.stringify(setup.systemInstruction)).toContain('never go below');
-    expect(setup.generationConfig).toMatchObject({ speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Charon' } } } });
+    // Free plan: the partner is random; the setup must use that partner's voice.
+    const voiceOf: Record<string, string> = { maya: 'Kore', rohan: 'Puck', priya: 'Aoede', arjun: 'Charon' };
+    expect(setup.generationConfig).toMatchObject({
+      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceOf[created.persona.slug] } } },
+    });
     expect(JSON.stringify(setup.tools)).toContain('record_offer');
 
     await phone.accept(sdpAnswer);
@@ -99,14 +105,43 @@ describe('a full conversation', () => {
     await until(() => gemini.toolResponses.length > 0);
     expect(gemini.toolResponses[0]).toMatchObject({ id: 'offer-1', name: 'record_offer', response: { ok: false } });
 
-    // 5. end → everything persisted
+    // 5. recording: needs the current privacy notice, then captures both voices
+    const denied = await post(`/conversations/${created.id}/recording`, alice, { on: true });
+    expect(denied.status).toBe(403);
+    expect(await denied.json()).toMatchObject({ code: 'CONSENT_REQUIRED' });
+    expect((await post('/me/consent', alice, { consentVersion: CONSENT_VERSION })).status).toBe(200);
+    const rec = await post(`/conversations/${created.id}/recording`, alice, { on: true });
+    expect(await rec.json()).toEqual({ recording: true });
+    await until(() => phone.controls.some((c) => c.type === 'recording' && c.on === true));
+    // Ask the fake AI to speak again so there is audio in the recording.
+    const before = phone.aiPackets();
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(phone.aiPackets()).toBeGreaterThanOrEqual(before);
+    expect((await get(`/conversations/${created.id}/recording`, alice)).status).toBe(409); // still live
+
+    // 6. end → everything persisted
     const endRes = await post(`/conversations/${created.id}/end`, alice);
     expect(endRes.status).toBe(200);
     const ended = (await endRes.json()) as ConversationDetail;
-    expect(ended).toMatchObject({ status: 'ENDED', endReason: 'USER_ENDED', scenarioTitle: 'Bargaining', personaName: 'Arjun' });
+    expect(ended).toMatchObject({ status: 'ENDED', endReason: 'USER_ENDED', scenarioTitle: 'Bargaining', personaName: created.persona.name });
     expect(ended.turns).toEqual([expect.objectContaining({ speaker: 'AI', text: 'Hello! Nice to meet you.' })]);
     expect(ended.goals.length).toBe(3);
+    expect(ended.recording).toMatchObject({ inProgress: false });
+    expect(ended.recording!.durationMs).toBeGreaterThan(1000);
     await phone.close();
+
+    // The recording is a valid Ogg Opus file, only for its owner, and seekable.
+    const audio = await get(`/conversations/${created.id}/recording`, alice);
+    expect(audio.status).toBe(200);
+    expect(audio.headers.get('content-type')).toBe('audio/ogg');
+    const bytes = Buffer.from(await audio.arrayBuffer());
+    expect(bytes.toString('ascii', 0, 4)).toBe('OggS');
+    expect(bytes.toString('ascii', 28, 36)).toBe('OpusHead');
+    expect(bytes.length).toBe(ended.recording!.bytes);
+    expect((await get(`/conversations/${created.id}/recording`, bob)).status).toBe(404);
+    const part = await fetch(`${api.base}/conversations/${created.id}/recording`, { headers: { Cookie: alice, Range: 'bytes=10-19' } });
+    expect(part.status).toBe(206);
+    expect(Buffer.from(await part.arrayBuffer())).toEqual(bytes.subarray(10, 20));
 
     const [row] = await sql<{ status: string; offer: string; floor: string; events: string }>(
       `SELECT status, "scenarioState"->'values'->>'currentOffer' AS offer, "scenarioState"->'values'->>'floorPrice' AS floor,
@@ -115,7 +150,7 @@ describe('a full conversation', () => {
       [created.id],
     );
     expect(row!.offer).toBe(row!.floor); // clamped to the floor, never below
-    expect(row!.events).toBe('READY,TOOL_CALL,ENDED');
+    expect(row!.events).toBe('READY,TOOL_CALL,RECORDING_ON,ENDED');
 
     // 6. the time counts against today's allowance
     const quotaAfter = (await (await get('/quota', alice)).json()) as Quota;
@@ -125,6 +160,44 @@ describe('a full conversation', () => {
     // 7. history
     const list = (await (await get('/conversations', alice)).json()) as ConversationList;
     expect(list.items[0]).toMatchObject({ id: created.id, scenarioTitle: 'Bargaining', turnCount: 1, status: 'ENDED' });
+  });
+});
+
+describe('partner & accent by plan', () => {
+  it('free plan: partner and accent are random even if one is requested', async () => {
+    const seen = new Set<string>();
+    for (let i = 0; i < 6; i++) {
+      const res = await post('/conversations', alice, { scenarioId: scenario('debate'), personaId: persona('priya'), accent: 'BRITISH' });
+      const c = (await res.json()) as CreateConversationResponse;
+      seen.add(c.persona.slug);
+      await post(`/conversations/${c.id}/end`, alice);
+    }
+    expect(seen.size).toBeGreaterThan(1); // ignored the requested partner
+  });
+
+  it('pro plan: the chosen partner, voice gender and accent are honoured', async () => {
+    await sql(`UPDATE users SET plan = 'PRO' WHERE email = $1`, ['alice.conv@example.com']);
+    const chosen = (await (await post('/conversations', alice, { scenarioId: scenario('debate'), personaId: persona('priya'), accent: 'BRITISH' })).json()) as CreateConversationResponse;
+    expect(chosen).toMatchObject({ persona: { slug: 'priya' }, accent: 'BRITISH' });
+    await post(`/conversations/${chosen.id}/end`, alice);
+
+    const male = (await (await post('/conversations', alice, { scenarioId: scenario('debate'), voice: 'MALE' })).json()) as CreateConversationResponse;
+    expect(male.persona.gender).toBe('MALE');
+    await post(`/conversations/${male.id}/end`, alice);
+    await sql(`UPDATE users SET plan = 'FREE' WHERE email = $1`, ['alice.conv@example.com']);
+  });
+});
+
+describe('recordings', () => {
+  it('can be deleted by the owner, and go with the conversation', async () => {
+    const [row] = await sql<{ id: string }>(
+      `SELECT id FROM conversation_sessions WHERE "recordingKey" IS NOT NULL ORDER BY "createdAt" DESC LIMIT 1`,
+    );
+    expect((await fetch(`${api.base}/conversations/${row!.id}/recording`, { method: 'DELETE', headers: { Cookie: bob } })).status).toBe(404);
+    expect((await fetch(`${api.base}/conversations/${row!.id}/recording`, { method: 'DELETE', headers: { Cookie: alice } })).status).toBe(204);
+    expect((await get(`/conversations/${row!.id}/recording`, alice)).status).toBe(404);
+    const detail = (await (await get(`/conversations/${row!.id}`, alice)).json()) as ConversationDetail;
+    expect(detail.recording).toBeNull();
   });
 });
 

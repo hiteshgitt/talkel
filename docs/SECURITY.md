@@ -37,6 +37,14 @@
 - **Mobile session storage:** SecureStore (Android Keystore). After email verification, Better Auth's Expo plugin passes the new session to the app inside the `speakai://` deep link (`?cookie=…`). The session therefore briefly appears in a URL on the device. This is the library's design; if it becomes a concern, drop `autoSignInAfterVerification` and have users sign in after verifying.
 - **Voice calls** are held per owner. Another user's call id returns 404, so ids can't be probed.
 
+## 2b. Call recordings (added 2026-09-30)
+
+- **Opt-in, per call:** nothing is recorded until the user taps Record during a call. Starting a recording requires the privacy notice version that mentions recordings (`CONSENT_VERSION` 2026-10-01; existing users see a one-time "updated notice" screen).
+- **What's recorded:** both voices, exactly as heard, mixed on the server (we're in the media path). Stored as Ogg Opus (~32 kbps, about 2.4 MB per 10 minutes), streamed to storage during the call.
+- **Access:** only the owner. `GET /v1/conversations/:id/recording` is scoped to the session user, and another user's id returns 404. Responses are `Cache-Control: private, no-store`. Storage keys are validated (`<uuid>/<uuid>.ogg`), so paths can't be traversed.
+- **Deletion:** users can delete a recording on its own, or with its conversation. Account deletion (M4) must also purge the recordings prefix.
+- **Storage:** local disk (`RECORDINGS_DIR`, git-ignored, files mode 600) in development. **Before launch:** an S3-compatible bucket (e.g. Cloudflare R2) with server-side encryption and a lifecycle rule. The `RecordingStore` interface is already in place.
+
 ## 3. Privacy (PRD §52–53)
 
 | Data | Default | Retention | User control |

@@ -7,7 +7,8 @@ import {
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Body, Button, Card, Choice, ErrorText, Screen, Title } from '@/components/ui';
+import { PrivacyNotice } from '@/components/privacy-notice';
+import { Body, Button, Choice, ErrorText, Screen, Title } from '@/components/ui';
 import { api } from '@/lib/api';
 import { ME_KEY } from '@/lib/queries';
 
@@ -105,11 +106,7 @@ export default function OnboardingScreen() {
       {step === 'consent' && (
         <>
           <Title>Your voice and privacy</Title>
-          <Card>
-            <Body>• Your voice is sent to our AI provider (Google Gemini) during calls so it can reply. We don’t store your audio.</Body>
-            <Body>• We store the text transcript of each conversation so we can give you feedback and track your progress.</Body>
-            <Body>• You can delete conversations or your whole account at any time.</Body>
-          </Card>
+          <PrivacyNotice />
           <Choice
             role="checkbox"
             label="I agree"

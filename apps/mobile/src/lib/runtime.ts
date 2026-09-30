@@ -1,3 +1,4 @@
+import { requireOptionalNativeModule } from 'expo';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 
 /**
@@ -9,4 +10,9 @@ export function nativeCallingProblem(): string | null {
     return 'Calls need the SpeakAI development build. Expo Go does not include the audio calling module.';
   }
   return null;
+}
+
+/** Recording playback needs the audio module, which only newer app builds include. */
+export function audioPlaybackAvailable(): boolean {
+  return requireOptionalNativeModule('ExpoAudio') !== null;
 }

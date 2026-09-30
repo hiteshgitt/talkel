@@ -16,6 +16,7 @@ class FakeMedia implements MediaEndpoint {
     this.pcm.push(h);
   }
   onControlOpen() {}
+  onAiFrame() {}
   onPlayback(h: (s: 'started' | 'stopped') => void) {
     this.playback.push(h);
   }

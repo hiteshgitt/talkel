@@ -1,6 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import { type CanActivate, type ExecutionContext, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { CONSENT_VERSION } from '@speakai/contracts';
 import type { PrismaClient } from '@speakai/db';
 import { fromNodeHeaders } from 'better-auth/node';
 import { ProblemException } from '../common/problem.js';
@@ -67,10 +68,11 @@ export class SessionGuard implements CanActivate {
           email: DEV_TOKEN_USER_EMAIL,
           name: 'Dev scripts',
           emailVerified: true,
-          profile: { create: { displayName: 'Dev scripts', onboardedAt: new Date() } },
+          profile: { create: { displayName: 'Dev scripts', onboardedAt: new Date(), consentVersion: CONSENT_VERSION, consentedAt: new Date() } },
           settings: { create: {} },
         },
-        update: {},
+        // Test account: keep it on the current notice so scripts can exercise recording.
+        update: { profile: { update: { consentVersion: CONSENT_VERSION, consentedAt: new Date() } } },
       });
       return user as unknown as AuthSession['user'];
     })();

@@ -12,9 +12,10 @@ const LANGUAGES: { id: FeedbackLanguage; label: string }[] = [
   { id: 'hi', label: 'हिन्दी' },
 ];
 
-const VOICES: { id: VoiceGender; label: string }[] = [
-  { id: 'FEMALE', label: 'Maya (female)' },
-  { id: 'MALE', label: 'Rohan (male)' },
+const VOICES: { id: VoiceGender | null; label: string }[] = [
+  { id: null, label: 'Random' },
+  { id: 'FEMALE', label: 'Female' },
+  { id: 'MALE', label: 'Male' },
 ];
 
 export default function ProfileScreen() {
@@ -38,6 +39,7 @@ export default function ProfileScreen() {
       <Card>
         <Text style={styles.name}>{me.profile.displayName ?? me.user.name}</Text>
         <Body muted>{me.user.email}</Body>
+        <Body muted>Plan: {me.user.plan === 'PRO' ? 'Pro' : 'Free — partner and accent are chosen at random'}</Body>
       </Card>
 
       <Text style={styles.section}>Feedback language</Text>
@@ -53,18 +55,22 @@ export default function ProfileScreen() {
         ))}
       </View>
 
-      <Text style={styles.section}>Default conversation partner</Text>
-      <View style={styles.row}>
-        {VOICES.map((v) => (
-          <Choice
-            key={v.id}
-            compact
-            label={v.label}
-            selected={(me.settings.preferredVoiceGender ?? 'FEMALE') === v.id}
-            onPress={() => update.mutate({ preferredVoiceGender: v.id })}
-          />
-        ))}
-      </View>
+      {me.entitlements.choosePartner ? (
+        <>
+          <Text style={styles.section}>Default voice</Text>
+          <View style={styles.row}>
+            {VOICES.map((v) => (
+              <Choice
+                key={v.label}
+                compact
+                label={v.label}
+                selected={(me.settings.preferredVoiceGender ?? null) === v.id}
+                onPress={() => update.mutate({ preferredVoiceGender: v.id })}
+              />
+            ))}
+          </View>
+        </>
+      ) : null}
       <ErrorText>{update.error instanceof Error ? update.error.message : null}</ErrorText>
 
       <Button label="Sign out" variant="secondary" onPress={() => void signOut()} loading={signingOut} />

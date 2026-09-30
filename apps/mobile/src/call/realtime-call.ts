@@ -15,6 +15,10 @@ export interface CallState {
   connectedAt: number | null;
   /** Seconds left when the server's one-minute warning arrives. */
   warningSecondsLeft: number | null;
+  /** Server-confirmed: this call is being recorded. */
+  recording: boolean;
+  /** Last recording error (e.g. privacy notice not accepted), cleared on the next attempt. */
+  recordingError: string | null;
   error: string | null;
 }
 
@@ -39,6 +43,8 @@ export class RealtimeCall {
     speaker: false,
     connectedAt: null,
     warningSecondsLeft: null,
+    recording: false,
+    recordingError: null,
     error: null,
   };
   private readonly listeners = new Set<Listener>();
@@ -100,6 +106,18 @@ export class RealtimeCall {
     const speaker = !this.state.speaker;
     this.incall?.setForceSpeakerphoneOn(speaker);
     this.set({ speaker });
+  }
+
+  async toggleRecording(): Promise<void> {
+    if (this.state.phase !== 'active') return;
+    const next = !this.state.recording;
+    this.set({ recordingError: null });
+    try {
+      const { recording } = await api.setRecording(this.conversationId, next);
+      this.set({ recording });
+    } catch (err) {
+      this.set({ recordingError: friendlyError(err) });
+    }
   }
 
   /** User hangs up (or the server ended the call). */
@@ -225,6 +243,9 @@ export class RealtimeCall {
         break;
       case 'time_warning':
         if (typeof event.secondsRemaining === 'number') this.set({ warningSecondsLeft: event.secondsRemaining });
+        break;
+      case 'recording':
+        this.set({ recording: (event as { on?: unknown }).on === true });
         break;
       case 'call.ended':
         void this.hangUp();
