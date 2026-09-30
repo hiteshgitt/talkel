@@ -15,7 +15,10 @@ import {
   type ConversationList,
   type CreateConversationRequest,
   type CreateConversationResponse,
+  AnalysisStatus as AnalysisStatusSchema,
   EndReason as EndReasonSchema,
+  Feedback,
+  FeedbackLanguage,
   EnglishLevel,
   LearningGoal,
   SessionStatus as SessionStatusSchema,
@@ -36,6 +39,8 @@ import { JsonlCallLog } from '../common/jsonl-call-log.js';
 import { CallRecorder } from '../recording/call-recorder.js';
 import { RECORDING_STORE, recordingKey, type RecordingStore } from '../recording/recording-store.js';
 import { LiveConversation, type LiveSnapshot, type LiveStatus } from './live-conversation.js';
+import { AnalysisQueue } from '../analysis/analysis-queue.js';
+import { LearningProfileService } from '../analysis/learning-profile.service.js';
 import { QuotaService } from './quota.service.js';
 import { entitlementsFor } from '../users/users.service.js';
 
@@ -78,6 +83,8 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
     @Inject(ENV) private readonly env: Env,
     @Inject(RECORDING_STORE) private readonly recordings: RecordingStore,
     private readonly quota: QuotaService,
+    private readonly analysisQueue: AnalysisQueue,
+    private readonly profiles: LearningProfileService,
   ) {}
 
   // ───────────── lifecycle ─────────────
@@ -130,6 +137,7 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
       accent,
       liveCorrection,
       learnerGoals,
+      learnerWeakSpots: await this.profiles.weakSpots(userId),
       timeZone: user.profile?.timezone ?? 'Asia/Kolkata',
       recentSituations: version.kind === 'casual' ? await this.recentSituations(userId) : [],
     });
@@ -279,6 +287,14 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
     return this.detail(userId, id);
   }
 
+  /** Re-queues feedback that failed (e.g. the AI provider was down for a long time). */
+  async retryFeedback(userId: string, id: string): Promise<void> {
+    const s = await this.owned(userId, id);
+    if (s.analysisStatus !== 'FAILED') throw problem(HttpStatus.CONFLICT, 'FEEDBACK_NOT_RETRYABLE', 'Feedback is not in a failed state');
+    await this.prisma.conversationSession.update({ where: { id }, data: { analysisStatus: 'PENDING' } });
+    await this.analysisQueue.enqueue(id, { force: true });
+  }
+
   /** Starts or pauses recording the live call. Requires the privacy notice that covers recordings. */
   async setRecording(userId: string, id: string, on: boolean): Promise<{ recording: boolean }> {
     await this.owned(userId, id);
@@ -361,7 +377,12 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
     if (!isUuid(id)) throw notFound();
     const s = await this.prisma.conversationSession.findFirst({
       where: { id, userId },
-      include: { scenarioVersion: true, persona: { select: { name: true } }, turns: { orderBy: { seq: 'asc' } } },
+      include: {
+        scenarioVersion: true,
+        persona: { select: { name: true } },
+        turns: { orderBy: { seq: 'asc' } },
+        analysis: { include: { grammarErrors: { orderBy: { turnSeq: 'asc' } }, vocabularyItems: true, fluency: true, recommendations: true } },
+      },
     });
     if (!s) throw notFound();
     const state = StoredState.parse(s.scenarioState);
@@ -384,6 +405,8 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
       durationMs: live?.durationMs ?? s.durationMs,
       turnCount: turns.length,
       accent: Accent.catch('INDIAN').parse(s.accent),
+      analysisStatus: AnalysisStatusSchema.parse(s.analysisStatus),
+      feedback: s.analysis ? toFeedback(s.analysis) : null,
       recording: live?.recording.started
         ? { inProgress: true, durationMs: null, bytes: null }
         : s.recordingKey
@@ -571,6 +594,9 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
           ...(snap.startedAt ? { startedAt: snap.startedAt } : {}),
           goalsAchieved: snap.goalsAchieved,
           scenarioState,
+          userSpeakingMs: Math.round(snap.liveMetrics.userSpeakingMs),
+          liveMetrics: snap.liveMetrics,
+          analysisStatus: snap.turns.some((t) => t.speaker === 'USER') ? 'PENDING' : 'SKIPPED',
           ...(snap.recording.result
             ? { recordingDurationMs: snap.recording.result.durationMs, recordingBytes: snap.recording.result.bytes }
             : {}),
@@ -579,10 +605,44 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
       this.prisma.usageRecord.create({ data: { ...usage, sessionId: id } }),
     ]);
     this.logger.log(`conversation ${id} ended: ${snap.endReason} after ${durationMs} ms, ${snap.turns.length} turns, media=${JSON.stringify(snap.media)}`);
+    if (snap.turns.some((t) => t.speaker === 'USER')) {
+      await this.analysisQueue.enqueue(id).catch((err: unknown) => this.logger.error(`could not queue analysis for ${id}: ${(err as Error).message}`));
+    }
   }
 }
 
 const isUuid = (id: string) => z.string().uuid().safeParse(id).success;
+
+type AnalysisRow = Prisma.SessionAnalysisGetPayload<{
+  include: { grammarErrors: true; vocabularyItems: true; fluency: true; recommendations: true };
+}>;
+
+/** DB rows → the Feedback contract (validated, so a bad row can't reach the app). */
+function toFeedback(a: AnalysisRow): Feedback {
+  const f = a.fluency;
+  return Feedback.parse({
+    overallScore: a.overallScore,
+    summary: a.summary,
+    strengths: a.strengths,
+    focusAreas: a.focusAreas,
+    skills: a.skills,
+    grammarErrors: a.grammarErrors.map((e) => ({ turnSeq: e.turnSeq, original: e.original, corrected: e.corrected, category: e.category, explanation: e.explanation, severity: e.severity })),
+    vocabulary: a.vocabularyItems.map((v) => ({ kind: v.kind, term: v.term, alternatives: v.alternatives, example: v.example })),
+    fluency: {
+      userSpeakingMs: f?.userSpeakingMs ?? 0,
+      userWords: f?.userWords ?? 0,
+      wordsPerMinute: f?.wordsPerMinute ?? null,
+      fillerCounts: f?.fillerCounts ?? {},
+      fillersPerMinute: f?.fillersPerMinute ?? null,
+      latencyP50Ms: f?.latencyP50Ms ?? null,
+      longPauseCount: f?.longPauseCount ?? 0,
+    },
+    conversationSkills: a.conversationSkills,
+    translationPatterns: a.translationPatterns,
+    recommendations: a.recommendations.map((r) => ({ type: r.type, scenarioSlug: r.scenarioSlug, title: r.title, reason: r.reason })),
+    feedbackLanguage: FeedbackLanguage.catch('en').parse(a.feedbackLanguage),
+  });
+}
 
 function pickRandom<T>(list: readonly T[]): T | undefined {
   return list[Math.floor(Math.random() * list.length)];

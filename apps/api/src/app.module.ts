@@ -10,6 +10,9 @@ import { CatalogController } from './conversations/catalog.controller.js';
 import { ConversationsController } from './conversations/conversations.controller.js';
 import { ConversationsService } from './conversations/conversations.service.js';
 import { QuotaService } from './conversations/quota.service.js';
+import { AnalysisQueue } from './analysis/analysis-queue.js';
+import { ProgressController } from './analysis/progress.controller.js';
+import { LearningProfileService } from './analysis/learning-profile.service.js';
 import { LocalRecordingStore, RECORDING_STORE } from './recording/recording-store.js';
 import { UsersController } from './users/users.controller.js';
 import { UsersService } from './users/users.service.js';
@@ -40,11 +43,13 @@ export class AppModule {
         PrismaModule,
         AuthModule,
       ],
-      controllers: [HealthController, UsersController, AdminController, CatalogController, ConversationsController],
+      controllers: [HealthController, UsersController, AdminController, CatalogController, ConversationsController, ProgressController],
       providers: [
         UsersService,
         QuotaService,
         ConversationsService,
+        AnalysisQueue,
+        LearningProfileService,
         { provide: RECORDING_STORE, useFactory: () => new LocalRecordingStore(env.RECORDINGS_DIR) },
       ],
     };

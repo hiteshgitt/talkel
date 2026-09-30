@@ -210,6 +210,18 @@ describe('LiveConversation', () => {
     expect(media.controls).toContainEqual({ type: 'call.ended', reason: 'TIME_LIMIT' });
   });
 
+  it('measures speaking time and response latency after the AI stops', async () => {
+    const { convo, media, advance } = setup();
+    convo.markMediaReady();
+    media.setPlaying(true);
+    await advance(2000);
+    media.setPlaying(false); // AI finished
+    await advance(1500); // user thinks for 1.5 s
+    media.speak(50); // ~1 s of speech (+ release)
+    const m = convo.snapshot().liveMetrics;
+    expect(m.responseLatenciesMs).toEqual([1500]);
+  });
+
   it('flushes barge-in audio immediately', () => {
     const { convo, live, media } = setup();
     convo.markMediaReady();

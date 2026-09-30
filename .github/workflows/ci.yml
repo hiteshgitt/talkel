@@ -28,9 +28,19 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6381:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
 
     env:
       TEST_DATABASE_URL: postgresql://speakai:speakai_dev@localhost:5436/speakai_test
+      TEST_REDIS_URL: redis://localhost:6381/5
       # Only for `prisma generate`/typecheck of packages/db; e2e uses TEST_DATABASE_URL.
       DATABASE_URL: postgresql://speakai:speakai_dev@localhost:5436/speakai_test
 
@@ -58,7 +68,7 @@ jobs:
       - name: Unit tests
         run: pnpm test
 
-      - name: API end-to-end tests (real Postgres, fake AI providers)
+      - name: API end-to-end tests (real Postgres + Redis, fake AI providers, real worker)
         run: pnpm --filter @speakai/api test:e2e
 
       - name: Web production build

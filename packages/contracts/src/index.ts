@@ -280,8 +280,105 @@ export const RecordingInfo = z.object({
 });
 export type RecordingInfo = z.infer<typeof RecordingInfo>;
 
+// ───────────── After-call feedback (M3) ─────────────
+
+export const AnalysisStatus = z.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', 'SKIPPED']);
+export type AnalysisStatus = z.infer<typeof AnalysisStatus>;
+
+export const SkillKey = z.enum(['grammar', 'vocabulary', 'fluency', 'conversation', 'clarity']);
+export type SkillKey = z.infer<typeof SkillKey>;
+
+export const SkillAssessment = z.object({
+  /** 1 (needs a lot of work) … 5 (excellent for everyday use) */
+  band: z.number().int().min(1).max(5),
+  /** Band shown as 0–100 in steps of 5 — the rationale is what matters (PRD §28). */
+  score: z.number().int().min(0).max(100),
+  rationale: z.string(),
+});
+export type SkillAssessment = z.infer<typeof SkillAssessment>;
+
+export const GrammarCategory = z.enum([
+  'VERB_TENSE',
+  'SUBJECT_VERB_AGREEMENT',
+  'ARTICLES',
+  'PREPOSITIONS',
+  'WORD_ORDER',
+  'PLURALS',
+  'PRONOUNS',
+  'QUESTION_FORM',
+  'VERB_FORM',
+  'WORD_CHOICE',
+  'OTHER',
+]);
+export type GrammarCategory = z.infer<typeof GrammarCategory>;
+
+export const Feedback = z.object({
+  overallScore: z.number().int().min(0).max(100),
+  summary: z.string(),
+  strengths: z.array(z.string()),
+  focusAreas: z.array(z.string()),
+  skills: z.record(SkillKey, SkillAssessment),
+  grammarErrors: z.array(
+    z.object({
+      turnSeq: z.number().int(),
+      original: z.string(),
+      corrected: z.string(),
+      category: GrammarCategory,
+      explanation: z.string(),
+      severity: z.enum(['LOW', 'MEDIUM', 'HIGH']),
+    }),
+  ),
+  vocabulary: z.array(
+    z.object({
+      kind: z.enum(['REPEATED', 'UPGRADE', 'GOOD_USAGE']),
+      term: z.string(),
+      alternatives: z.array(z.string()),
+      example: z.string().nullable(),
+    }),
+  ),
+  fluency: z.object({
+    userSpeakingMs: z.number().int(),
+    userWords: z.number().int(),
+    wordsPerMinute: z.number().int().nullable(),
+    fillerCounts: z.record(z.string(), z.number().int()),
+    fillersPerMinute: z.number().nullable(),
+    latencyP50Ms: z.number().int().nullable(),
+    longPauseCount: z.number().int(),
+  }),
+  conversationSkills: z.object({
+    askedQuestions: z.boolean(),
+    elaborated: z.boolean(),
+    disagreedPolitely: z.boolean().nullable(),
+    clarified: z.boolean().nullable(),
+    notes: z.string(),
+  }),
+  translationPatterns: z.array(z.string()),
+  recommendations: z.array(z.object({ type: z.string(), scenarioSlug: z.string().nullable(), title: z.string(), reason: z.string() })),
+  feedbackLanguage: FeedbackLanguage,
+});
+export type Feedback = z.infer<typeof Feedback>;
+
+export const Progress = z.object({
+  analysedConversations: z.number().int(),
+  totalSpeakingMs: z.number().int(),
+  /** Smoothed skill scores (0–100), recent conversations weighted more; null until the first feedback. */
+  skills: z.object({
+    grammar: z.number().int().nullable(),
+    vocabulary: z.number().int().nullable(),
+    fluency: z.number().int().nullable(),
+    conversation: z.number().int().nullable(),
+  }),
+  commonMistakes: z.array(z.object({ category: GrammarCategory, count: z.number().int() })),
+  commonFillers: z.array(z.object({ word: z.string(), count: z.number().int() })),
+  /** A few recent corrections to review. */
+  recentCorrections: z.array(z.object({ original: z.string(), corrected: z.string(), category: GrammarCategory })),
+});
+export type Progress = z.infer<typeof Progress>;
+
 export const ConversationDetail = ConversationSummary.extend({
   accent: Accent,
+  analysisStatus: AnalysisStatus,
+  feedback: Feedback.nullable(),
   recording: RecordingInfo.nullable(),
   brief: ConversationBrief,
   goals: z.array(z.object({ id: z.string(), description: z.string(), achieved: z.boolean() })),

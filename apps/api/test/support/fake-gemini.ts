@@ -3,8 +3,33 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { type WebSocket, WebSocketServer } from 'ws';
 
+/** What the fake evaluation model "says". One correction is invented on purpose (grounding must drop it). */
+export const FAKE_EVALUATION = {
+  summary: 'Good start.',
+  strengths: ['Polite'],
+  focusAreas: ['Past tense'],
+  skills: {
+    grammar: { band: 3, rationale: 'Some tense errors.' },
+    vocabulary: { band: 4, rationale: 'Good words.' },
+    fluency: { band: 4, rationale: 'Steady.' },
+    conversation: { band: 3, rationale: 'Short answers.' },
+    clarity: { band: 4, rationale: 'Clear.' },
+  },
+  grammarErrors: [
+    { turnSeq: 0, original: 'Hello! Nice', corrected: 'Hello, nice', category: 'OTHER', explanation: 'x', severity: 'LOW' },
+    { turnSeq: 1, original: 'I have went to Goa', corrected: 'I went to Goa', category: 'VERB_TENSE', explanation: 'invented', severity: 'HIGH' },
+  ],
+  vocabulary: [{ kind: 'UPGRADE', term: 'good', alternatives: ['great'], example: null }],
+  conversationSkills: { askedQuestions: false, elaborated: false, disagreedPolitely: null, clarified: null, notes: 'n' },
+  translationPatterns: [],
+  goalsAchieved: ['made_counter_offer', 'not_a_real_goal'],
+  recommendations: [{ type: 'SCENARIO', scenarioSlug: 'debate', title: 'Try a debate', reason: 'r' }],
+};
+
 export interface FakeGemini {
   url: string;
+  restBase: string;
+  evaluations: string[];
   setups: Array<Record<string, unknown>>;
   cues: string[];
   toolResponses: Array<{ id: string; name: string; response: Record<string, unknown> }>;
@@ -22,7 +47,22 @@ export async function startFakeGemini(): Promise<FakeGemini> {
   const toolResponses: FakeGemini['toolResponses'] = [];
   let audio = 0;
 
-  const server: Server = createServer((_, res) => res.writeHead(404).end());
+  // REST side: the after-call evaluation (generateContent with structured output).
+  const evaluations: string[] = [];
+  const server: Server = createServer((req, res) => {
+    const m = req.url?.match(/^\/v1beta\/models\/([^/:]+):generateContent$/);
+    if (req.method !== 'POST' || !m || req.headers['x-goog-api-key'] !== 'fake-gemini-key') {
+      res.writeHead(404).end();
+      return;
+    }
+    let body = '';
+    req.on('data', (c: Buffer) => (body += c.toString()));
+    req.on('end', () => {
+      evaluations.push(body);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(FAKE_EVALUATION) }] } }], usageMetadata: { promptTokenCount: 900, candidatesTokenCount: 300 } }));
+    });
+  });
   const wss = new WebSocketServer({ server });
   wss.on('connection', (ws: WebSocket, req) => {
     if (req.headers['x-goog-api-key'] !== 'fake-gemini-key') {
@@ -46,6 +86,12 @@ export async function startFakeGemini(): Promise<FakeGemini> {
         for (let i = 0; i < pcm.length / 2; i++) pcm.writeInt16LE(Math.round(6000 * Math.sin(i / 8)), i * 2);
         ws.send(JSON.stringify({ serverContent: { modelTurn: { parts: [{ inlineData: { mimeType: 'audio/pcm;rate=24000', data: pcm.toString('base64') } }] } } }));
         ws.send(JSON.stringify({ serverContent: { outputTranscription: { text: 'Hello! Nice to meet you.' } } }));
+        ws.send(JSON.stringify({ serverContent: { turnComplete: true } }));
+        ws.send(
+          JSON.stringify({
+            serverContent: { inputTranscription: { text: 'Hi, this jacket is too costly, I can give you one thousand rupees only.' } },
+          }),
+        );
         const tools = (setups.at(-1)?.tools as Array<{ functionDeclarations: Array<{ name: string }> }> | undefined) ?? [];
         if (tools.some((t) => t.functionDeclarations.some((d) => d.name === 'record_offer'))) {
           ws.send(JSON.stringify({ toolCall: { functionCalls: [{ id: 'offer-1', name: 'record_offer', args: { price: 10 } }] } }));
@@ -60,6 +106,8 @@ export async function startFakeGemini(): Promise<FakeGemini> {
   const { port } = server.address() as AddressInfo;
   return {
     url: `ws://127.0.0.1:${port}/ws`,
+    restBase: `http://127.0.0.1:${port}/v1beta`,
+    evaluations,
     setups,
     cues,
     toolResponses,

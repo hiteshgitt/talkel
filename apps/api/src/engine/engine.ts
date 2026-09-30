@@ -49,6 +49,8 @@ export interface PrepareInput {
   accent: Accent;
   liveCorrection: boolean;
   learnerGoals: readonly LearningGoal[];
+  /** Recurring mistake categories from the learning profile (PRD §35). */
+  learnerWeakSpots?: readonly string[];
   timeZone: string;
   now?: Date;
   rng?: Rng;
@@ -91,7 +93,7 @@ export function prepareConversation(input: PrepareInput): PreparedConversation {
     input.persona.promptFragment,
     ACCENT[input.accent],
     DIFFICULTY[input.difficulty],
-    learnerLayer(input.learnerGoals),
+    learnerLayer(input.learnerGoals, input.learnerWeakSpots),
     TOOLS_GUIDANCE,
   ]
     .filter((s): s is string => Boolean(s))

@@ -2,12 +2,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { FeedbackSection } from '@/components/feedback';
 import { LEVEL_LABEL } from '@/components/pickers';
 import { Body, Button, Card, ErrorText, Loading, Screen, Title } from '@/components/ui';
 import { api, friendlyError } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
 import { audioPlaybackAvailable } from '@/lib/runtime';
-import { CONVERSATIONS_KEY, conversationKey, formatMinutes, QUOTA_KEY } from '@/lib/queries';
+import { CONVERSATIONS_KEY, conversationKey, formatMinutes, QUOTA_KEY, useMe } from '@/lib/queries';
 import { colors, radius } from '@/theme';
 
 // Loaded only when there is a recording and this app build includes the audio module.
@@ -33,10 +34,19 @@ export default function ConversationScreen() {
     queryKey: conversationKey(id),
     queryFn: () => api.conversation(id),
     // Transcripts are finalised a moment after the call ends; refresh until the status settles.
+    // Refresh while the call is finishing, the recording is being saved, or feedback is being prepared.
     refetchInterval: (q) =>
-      q.state.data && (['ACTIVE', 'CONNECTING', 'RECONNECTING'].includes(q.state.data.status) || q.state.data.recording?.inProgress)
-        ? 2000
+      q.state.data &&
+      (['ACTIVE', 'CONNECTING', 'RECONNECTING'].includes(q.state.data.status) ||
+        q.state.data.recording?.inProgress ||
+        ['PENDING', 'PROCESSING'].includes(q.state.data.analysisStatus))
+        ? 3000
         : false,
+  });
+  const { data: me } = useMe();
+  const retry = useMutation({
+    mutationFn: () => api.retryFeedback(id),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: conversationKey(id) }),
   });
   const remove = useMutation({
     mutationFn: () => api.deleteConversation(id),
@@ -68,19 +78,11 @@ export default function ConversationScreen() {
         {c.endReason ? ` · ${END_REASON[c.endReason] ?? ''}` : ''}
       </Body>
 
-      <Card>
-        <Body>{c.brief.briefing}</Body>
-      </Card>
+      <FeedbackSection c={c} lang={me?.settings.feedbackLanguage ?? 'en'} onRetry={() => retry.mutate()} retrying={retry.isPending} />
 
       <Card>
-        <Text style={styles.sectionTitle}>Goals for this conversation</Text>
-        {c.goals.map((g) => (
-          <Text key={g.id} style={styles.goal}>
-            {g.achieved ? '✓ ' : '• '}
-            {g.description}
-          </Text>
-        ))}
-        <Body muted>Detailed feedback on your English (grammar, vocabulary, fluency) is coming in the next update.</Body>
+        <Text style={styles.sectionTitle}>The situation</Text>
+        <Body>{c.brief.briefing}</Body>
       </Card>
 
       {c.recording ? <RecordingSection id={c.id} inProgress={c.recording.inProgress} durationMs={c.recording.durationMs} /> : null}

@@ -5,6 +5,8 @@ export const TEST_DATABASE_URL =
   process.env.TEST_DATABASE_URL ?? 'postgresql://speakai:speakai_dev@localhost:5436/speakai_test';
 export const DEV_TOKEN = 'e2e-dev-token-0123456789';
 export const WEB_ORIGIN = 'http://web.e2e.test';
+/** Separate Redis database so tests never mix with development jobs. */
+export const TEST_REDIS_URL = process.env.TEST_REDIS_URL ?? 'redis://localhost:6381/5';
 
 export interface ApiProcess {
   base: string;
@@ -34,6 +36,7 @@ export async function startApi(env: Record<string, string> = {}): Promise<ApiPro
       BETTER_AUTH_SECRET: 'e2e-secret-e2e-secret-e2e-secret-e2e-secret',
       POC_DEV_TOKEN: DEV_TOKEN,
       SMTP_URL: '',
+      REDIS_URL: TEST_REDIS_URL,
       ...env,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -56,4 +59,26 @@ export async function startApi(env: Record<string, string> = {}): Promise<ApiPro
   }
   proc.kill();
   throw new Error(`API did not start:\n${output}`);
+}
+
+/** Starts the queue worker (dist/worker.js) with the same kind of controlled environment. */
+export function startWorker(env: Record<string, string> = {}): { stop(): void; output(): string } {
+  const proc = spawn(process.execPath, ['dist/worker.js'], {
+    cwd: join(import.meta.dirname, '..', '..'),
+    env: {
+      PATH: process.env.PATH ?? '',
+      DOTENV_PATH: '/nonexistent/.env',
+      DATABASE_URL: TEST_DATABASE_URL,
+      APP_BASE_URL: 'http://127.0.0.1:1',
+      WEB_BASE_URL: WEB_ORIGIN,
+      BETTER_AUTH_SECRET: 'e2e-secret-e2e-secret-e2e-secret-e2e-secret',
+      REDIS_URL: TEST_REDIS_URL,
+      ...env,
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let output = '';
+  proc.stdout?.on('data', (d: Buffer) => (output += d.toString()));
+  proc.stderr?.on('data', (d: Buffer) => (output += d.toString()));
+  return { stop: () => proc.kill(), output: () => output };
 }

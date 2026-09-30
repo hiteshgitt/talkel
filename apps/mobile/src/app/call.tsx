@@ -4,7 +4,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Animated, BackHandler, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { CallState, RealtimeCall } from '@/call/realtime-call';
+import type { AudioRoute, CallState, RealtimeCall } from '@/call/realtime-call';
 import { useRealtimeCall } from '@/call/use-realtime-call';
 import { CONVERSATIONS_KEY, QUOTA_KEY } from '@/lib/queries';
 import { colors, radius } from '@/theme';
@@ -147,6 +147,13 @@ function CallTimer({ connectedAt }: { connectedAt: number | null }) {
   return <Text style={styles.timer}>{text}</Text>;
 }
 
+const ROUTE_LABEL: Record<AudioRoute, { label: string; glyph: string }> = {
+  EARPIECE: { label: 'Phone', glyph: '📱' },
+  SPEAKER_PHONE: { label: 'Speaker', glyph: '🔊' },
+  WIRED_HEADSET: { label: 'Headset', glyph: '🎧' },
+  BLUETOOTH: { label: 'Bluetooth', glyph: '🎧' },
+};
+
 function Controls({ call, state, onEnd }: { call: RealtimeCall | null; state: CallState; onEnd: () => void }) {
   const busy = state.phase === 'ending' || state.phase === 'ended';
   return (
@@ -163,7 +170,12 @@ function Controls({ call, state, onEnd }: { call: RealtimeCall | null; state: Ca
           onPress={() => void call?.toggleRecording()}
         />
         <RoundButton label="End" glyph="✕" danger disabled={busy} onPress={onEnd} />
-        <RoundButton label="Speaker" glyph="🔊" active={state.speaker} onPress={() => call?.toggleSpeaker()} />
+        <RoundButton
+          label={ROUTE_LABEL[state.audioRoute].label}
+          glyph={ROUTE_LABEL[state.audioRoute].glyph}
+          active={state.audioRoute !== 'EARPIECE'}
+          onPress={() => call?.nextAudioRoute()}
+        />
       </View>
     </View>
   );

@@ -22,6 +22,8 @@ export interface LiveSnapshot {
   stateChanges: Record<string, string | number>;
   usage: RealtimeUsage;
   media: MediaStats | null;
+  /** Timing measured live, for fluency feedback (text alone can't give these). */
+  liveMetrics: { userSpeakingMs: number; responseLatenciesMs: number[] };
   /** Recording state: `result` is set once the file is finalised (call ended). */
   recording: { active: boolean; started: boolean; result: RecordingResult | null };
 }
@@ -81,6 +83,11 @@ export class LiveConversation {
   private recorder: CallRecorder | null = null;
   private recorderPending: Promise<CallRecorder> | null = null;
   private recordingResult: RecordingResult | null = null;
+  // Live timing (monotonic ms): user speech time and how fast the user answers after the AI stops.
+  private userSpeakingMs = 0;
+  private userSpeechStartedAt: number | null = null;
+  private aiStoppedAt: number | null = null;
+  private readonly responseLatenciesMs: number[] = [];
 
   constructor(private readonly deps: LiveConversationDeps) {
     this.now = deps.now ?? (() => performance.now());
@@ -229,6 +236,11 @@ export class LiveConversation {
       usage: { ...this.usage },
       media: this.media.stats(),
       recording: { active: this.recorder?.recording ?? false, started: this.recorder !== null, result: this.recordingResult },
+      liveMetrics: {
+        userSpeakingMs:
+          this.userSpeakingMs + (this.userSpeechStartedAt !== null ? Math.max(0, (this.endedAtMono ?? this.now()) - this.userSpeechStartedAt) : 0),
+        responseLatenciesMs: [...this.responseLatenciesMs],
+      },
     };
   }
 
@@ -244,9 +256,15 @@ export class LiveConversation {
       const edge = this.vad.push(pcm);
       if (edge === 'start') {
         this.userSpeaking = true;
+        this.userSpeechStartedAt = this.now();
+        // Only count answers that start after the AI finished (not barge-ins, not the very first line).
+        if (this.aiStoppedAt !== null && !this.aiPlaying) this.responseLatenciesMs.push(Math.round(this.now() - this.aiStoppedAt));
+        this.aiStoppedAt = null;
         this.transcript.userSpeechStarted(this.elapsedMs());
       } else if (edge === 'stop') {
         this.userSpeaking = false;
+        if (this.userSpeechStartedAt !== null) this.userSpeakingMs += Math.max(0, this.now() - this.userSpeechStartedAt);
+        this.userSpeechStartedAt = null;
       }
       if (edge) this.updateFloor();
     });
@@ -256,6 +274,8 @@ export class LiveConversation {
     media.onPlayback((state) => {
       if (!current()) return;
       this.aiPlaying = state === 'started';
+      if (state === 'stopped' && !this.userSpeaking) this.aiStoppedAt = this.now();
+      if (state === 'started') this.aiStoppedAt = null;
       this.updateFloor();
     });
     media.onClosed((reason) => {

@@ -8,6 +8,7 @@ import {
   CreateConversationResponse,
   Me,
   type OnboardingRequest,
+  Progress,
   ProblemDetails,
   type ProfilePatch,
   Quota,
@@ -80,6 +81,7 @@ export const api = {
 
   catalog: () => request('/catalog', { method: 'GET' }, Catalog),
   quota: () => request('/quota', { method: 'GET' }, Quota),
+  progress: () => request('/progress', { method: 'GET' }, Progress),
 
   createConversation: (body: CreateConversationRequest) =>
     request('/conversations', { method: 'POST', body }, CreateConversationResponse),
@@ -95,6 +97,7 @@ export const api = {
   acceptConsent: (consentVersion: string) => request('/me/consent', { method: 'POST', body: { consentVersion } }, Me),
   setRecording: (id: string, on: boolean) => request(`${conv(id)}/recording`, { method: 'POST', body: { on } }, RecordingToggle),
   deleteRecording: (id: string) => request(`${conv(id)}/recording`, { method: 'DELETE' }, null),
+  retryFeedback: (id: string) => request(`${conv(id)}/feedback/retry`, { method: 'POST' }, null),
   /** Streamed by the audio player with the session cookie as a header. */
   recordingUrl: (id: string) => `${API_URL}${conv(id)}/recording`,
 };

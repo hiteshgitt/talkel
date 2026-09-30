@@ -31,7 +31,9 @@ cp apps/web/.env.example apps/web/.env.local
 cp apps/mobile/.env.example apps/mobile/.env
 
 pnpm build                                 # contracts, db, api, web
+pnpm --filter @speakai/db seed             # scenarios & personas
 pnpm --filter @speakai/api start           # API  :4810
+cd apps/api && node dist/worker.js && cd ../..  # queue worker (after-call feedback) — run alongside the API
 pnpm --filter @speakai/web start           # Web  :3100  (dev: pnpm --filter @speakai/web dev)
 cd apps/mobile && pnpm start               # Metro :8081 for the development build
 ```

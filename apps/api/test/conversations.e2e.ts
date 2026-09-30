@@ -5,7 +5,7 @@
 import { CONSENT_VERSION } from '@speakai/contracts';
 import type { Catalog, ConversationDetail, ConversationList, CreateConversationResponse, Quota } from '@speakai/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { type ApiProcess, startApi } from './support/api-process.js';
+import { type ApiProcess, startApi, startWorker } from './support/api-process.js';
 import { createFakePhone } from './support/fake-phone.js';
 import { type FakeGemini, startFakeGemini } from './support/fake-gemini.js';
 import { sql, verifiedUser } from './support/users.js';
@@ -16,15 +16,19 @@ let gemini: FakeGemini;
 let alice: string;
 let bob: string;
 let catalog: Catalog;
+let worker: ReturnType<typeof startWorker>;
 
 beforeAll(async () => {
   gemini = await startFakeGemini();
-  api = await startApi({ GEMINI_API_KEY: 'fake-gemini-key', GEMINI_LIVE_URL: gemini.url, RTC_ICE_SERVERS: '' });
+  const providerEnv = { GEMINI_API_KEY: 'fake-gemini-key', GEMINI_LIVE_URL: gemini.url, GEMINI_API_BASE: gemini.restBase, EVAL_MODELS: 'fake-eval-model' };
+  api = await startApi({ ...providerEnv, RTC_ICE_SERVERS: '' });
+  worker = startWorker(providerEnv);
   alice = await verifiedUser(api, 'alice.conv@example.com');
   bob = await verifiedUser(api, 'bob.conv@example.com');
   catalog = (await (await get('/catalog', alice)).json()) as Catalog;
 });
 afterAll(async () => {
+  worker?.stop();
   api?.stop();
   await gemini?.close();
 });
@@ -124,7 +128,8 @@ describe('a full conversation', () => {
     expect(endRes.status).toBe(200);
     const ended = (await endRes.json()) as ConversationDetail;
     expect(ended).toMatchObject({ status: 'ENDED', endReason: 'USER_ENDED', scenarioTitle: 'Bargaining', personaName: created.persona.name });
-    expect(ended.turns).toEqual([expect.objectContaining({ speaker: 'AI', text: 'Hello! Nice to meet you.' })]);
+    expect(ended.turns[0]).toEqual(expect.objectContaining({ speaker: 'AI', text: 'Hello! Nice to meet you.' }));
+    expect(ended.turns.some((t) => t.speaker === 'USER')).toBe(true);
     expect(ended.goals.length).toBe(3);
     expect(ended.recording).toMatchObject({ inProgress: false });
     expect(ended.recording!.durationMs).toBeGreaterThan(1000);
@@ -159,7 +164,36 @@ describe('a full conversation', () => {
 
     // 7. history
     const list = (await (await get('/conversations', alice)).json()) as ConversationList;
-    expect(list.items[0]).toMatchObject({ id: created.id, scenarioTitle: 'Bargaining', turnCount: 1, status: 'ENDED' });
+    expect(list.items[0]).toMatchObject({ id: created.id, scenarioTitle: 'Bargaining', status: 'ENDED' });
+
+    // 8. after-call feedback: queued, analysed by the worker, grounded and saved
+    let detail: ConversationDetail | null = null;
+    await until(async () => {
+      detail = (await (await get(`/conversations/${created.id}`, alice)).json()) as ConversationDetail;
+      return detail.analysisStatus === 'COMPLETED' || detail.analysisStatus === 'FAILED';
+    }, 20_000);
+    const d = detail as unknown as ConversationDetail;
+    expect(d.analysisStatus).toBe('COMPLETED');
+    const f = d.feedback!;
+    // Overall comes from the bands (3,4,4,3,4), not from the model.
+    expect(f.overallScore).toBe(70);
+    expect(f.skills.grammar).toEqual({ band: 3, score: 60, rationale: 'Some tense errors.' });
+    // Both invented corrections are dropped: one quotes the AI, one quotes words the learner never said.
+    expect(f.grammarErrors).toEqual([]);
+    expect(f.fluency.userWords).toBe(14);
+    // Unknown goal ids are ignored; the real one is recorded.
+    expect(d.goals.find((g) => g.id === 'made_counter_offer')?.achieved).toBe(true);
+    expect(f.recommendations).toEqual([{ type: 'SCENARIO', scenarioSlug: 'debate', title: 'Try a debate', reason: 'r' }]);
+    // The evaluation saw the transcript as numbered learner lines.
+    expect(gemini.evaluations.at(-1)).toContain('LEARNER: Hi, this jacket is too costly');
+    const [profile] = await sql<{ analysedCount: number }>(
+      `SELECT "analysedCount" FROM learning_profiles lp JOIN users u ON u.id = lp."userId" WHERE u.email = $1`,
+      ['alice.conv@example.com'],
+    );
+    expect(profile?.analysedCount).toBe(1);
+    const progress = (await (await get('/progress', alice)).json()) as { analysedConversations: number; skills: Record<string, number | null> };
+    expect(progress.analysedConversations).toBe(1);
+    expect(progress.skills.grammar).toBe(60); // band 3 → 60, the same scale as a conversation's feedback
   });
 });
 

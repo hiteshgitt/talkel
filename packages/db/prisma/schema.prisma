@@ -31,12 +31,15 @@ model User {
   createdAt     DateTime @default(now()) @db.Timestamptz(3)
   updatedAt     DateTime @updatedAt @db.Timestamptz(3)
 
-  sessions      Session[]
-  accounts      Account[]
-  profile       Profile?
-  settings      UserSettings?
-  conversations ConversationSession[]
-  usageRecords  UsageRecord[]
+  sessions        Session[]
+  accounts        Account[]
+  profile         Profile?
+  settings        UserSettings?
+  conversations   ConversationSession[]
+  usageRecords    UsageRecord[]
+  learningProfile LearningProfile?
+  grammarErrors   GrammarError[]
+  vocabularyItems VocabularyItem[]
 
   @@map("users")
 }
@@ -292,12 +295,18 @@ model ConversationSession {
   recordingKey        String?
   recordingDurationMs Int?
   recordingBytes      Int?
+  /// After-call feedback (Milestone 3)
+  analysisStatus      AnalysisStatus  @default(PENDING)
+  /// Measured live: total user speech time and timing metrics (latencies, long pauses)
+  userSpeakingMs      Int?
+  liveMetrics         Json?
   createdAt           DateTime        @default(now()) @db.Timestamptz(3)
   updatedAt           DateTime        @updatedAt @db.Timestamptz(3)
 
-  turns  ConversationTurn[]
-  events ConversationEvent[]
-  usage  UsageRecord[]
+  turns    ConversationTurn[]
+  events   ConversationEvent[]
+  usage    UsageRecord[]
+  analysis SessionAnalysis?
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([status])
@@ -360,4 +369,147 @@ model UsageRecord {
 
   @@index([userId, createdAt])
   @@map("usage_records")
+}
+
+// ───────────── After-call feedback (M3) ─────────────
+
+enum AnalysisStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum VocabKind {
+  REPEATED
+  UPGRADE
+  GOOD_USAGE
+}
+
+model SessionAnalysis {
+  id                  String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId           String              @unique @db.Uuid
+  session             ConversationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  /// 0–100, a multiple of 5, derived from skill bands (never the only feedback — PRD §27)
+  overallScore        Int
+  /// { grammar: { band, score, rationale, evidence[] }, … }
+  skills              Json
+  summary             String
+  strengths           String[]
+  focusAreas          String[]
+  /// PRD §33 observations: asked questions, elaborated, disagreed politely, clarified
+  conversationSkills  Json
+  /// PRD §43: patterns suggesting word-for-word translation (phrased as patterns, never "you thought in Hindi")
+  translationPatterns String[]
+  feedbackLanguage    String
+  evalModel           String
+  evalPromptVersion   String
+  /// Corrections dropped because they didn't match what the user actually said
+  groundingDropped    Int                 @default(0)
+  createdAt           DateTime            @default(now()) @db.Timestamptz(3)
+
+  grammarErrors   GrammarError[]
+  vocabularyItems VocabularyItem[]
+  fluency         FluencyMetrics?
+  recommendations PracticeRecommendation[]
+
+  @@map("session_analyses")
+}
+
+model GrammarError {
+  id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  analysisId  String          @db.Uuid
+  analysis    SessionAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  /// Denormalised for "your common mistakes" queries across sessions
+  userId      String          @db.Uuid
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Transcript turn (seq) the mistake came from
+  turnSeq     Int
+  original    String
+  corrected   String
+  /// Controlled list (see the evaluation schema): PAST_TENSE, ARTICLES, …
+  category    String
+  explanation String
+  severity    Severity
+  createdAt   DateTime        @default(now()) @db.Timestamptz(3)
+
+  @@index([userId, category])
+  @@map("grammar_errors")
+}
+
+model VocabularyItem {
+  id           String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  analysisId   String          @db.Uuid
+  analysis     SessionAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  userId       String          @db.Uuid
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind         VocabKind
+  term         String
+  alternatives String[]
+  example      String?
+  createdAt    DateTime        @default(now()) @db.Timestamptz(3)
+
+  @@index([userId, kind])
+  @@map("vocabulary_items")
+}
+
+model FluencyMetrics {
+  analysisId         String          @id @db.Uuid
+  analysis           SessionAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  userSpeakingMs     Int
+  userTurns          Int
+  userWords          Int
+  wordsPerMinute     Int?
+  meanUtteranceWords Float
+  typeTokenRatio     Float
+  /// { "um": 3, "like": 2 } — from the transcript (fillers may be under-counted, see VOICE-ARCHITECTURE §7)
+  fillerCounts       Json
+  fillersPerMinute   Float?
+  latencyP50Ms       Int?
+  latencyP90Ms       Int?
+  longPauseCount     Int
+
+  @@map("fluency_metrics")
+}
+
+model PracticeRecommendation {
+  id           String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  analysisId   String          @db.Uuid
+  analysis     SessionAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  /// SCENARIO | GRAMMAR_FOCUS | VOCABULARY | FLUENCY
+  type         String
+  scenarioSlug String?
+  title        String
+  reason       String
+  createdAt    DateTime        @default(now()) @db.Timestamptz(3)
+
+  @@map("practice_recommendations")
+}
+
+/// Evolves after every analysed conversation (PRD §34); feeds the next conversation's learner layer (PRD §35).
+model LearningProfile {
+  userId                String   @id @db.Uuid
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Running averages of skill bands (1–5), recent sessions weighted more
+  grammarBand           Float?
+  vocabularyBand        Float?
+  fluencyBand           Float?
+  conversationBand      Float?
+  /// [{ category, count, lastSeenAt }]
+  commonErrors          Json     @default("[]")
+  /// { "um": 12, … }
+  commonFillers         Json     @default("{}")
+  analysedCount         Int      @default(0)
+  totalSpeakingMs       BigInt   @default(0)
+  lastAnalysedSessionId String?  @db.Uuid
+  updatedAt             DateTime @updatedAt @db.Timestamptz(3)
+
+  @@map("learning_profiles")
 }

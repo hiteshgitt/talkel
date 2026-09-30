@@ -63,6 +63,12 @@ describe('seed content × engine', () => {
     expect(on.turnTaking.silenceMs).toBeGreaterThan(off.turnTaking.silenceMs);
   });
 
+  it('turns recurring mistakes into natural practice opportunities, without saying so', () => {
+    const p = prepareConversation({ ...base, learnerWeakSpots: ['VERB_TENSE'], scenario: scenario('friendly-conversation') });
+    expect(p.instructions).toContain('talking about past events');
+    expect(p.instructions).toContain('Never mention that you are doing this');
+  });
+
   it('adds the accent layer', () => {
     const p = prepareConversation({ ...base, accent: 'BRITISH', scenario: scenario('friendly-conversation') });
     expect(p.instructions).toContain('British English accent');

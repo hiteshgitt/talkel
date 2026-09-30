@@ -74,6 +74,17 @@ AI replies → user interrupts mid-sentence → AI stops and continues naturally
 
 ## Milestone 3 — Analysis
 
+> **Status (2026-09-30): done** (server, app, tests; the phone check is pending).
+> - **Live timing:** user speaking time and response latency after the AI stops, measured during the call.
+> - **Queue:** BullMQ on Redis. The API enqueues on call end; `dist/worker.js` is a second process that retries with backoff.
+> - **Metrics in code:** speech rate, fillers (context-aware: "like"/"you know" only as fillers), type/token ratio, latency p50/p90, long pauses.
+> - **Evaluation AI:** Gemini text models (`EVAL_MODELS`, falling back 3.8 Flash → 3.5 Flash → 2.5 Flash on overload). Structured output uses a JSON Schema generated from Zod, then Zod validation.
+> - **Guardrails:** corrections must quote the learner's actual words. Scores come from bands in code, and unknown goal ids and scenario slugs are dropped.
+> - **Feedback language:** English or Hindi (explanations translated; corrections stay in English). Verified live.
+> - **Learning profile:** smoothed skill bands, common mistake categories and fillers. Recurring mistakes feed the next conversation's instructions as natural practice opportunities (PRD §35).
+> - **App:** feedback on the conversation screen (score, skills, corrections, vocabulary, fluency, goals, tips, recommended scenario) and a Progress tab.
+> - **Known limit:** real-time transcription drops some fillers. A verbatim post-call pass on recordings (`gemini-3.5-transcribe`) would fix this for recorded calls.
+
 - Worker entrypoint + BullMQ queues (`analysis`, `learning-profile`, `retention-cleanup`).
 - Deterministic metrics in `packages/shared` (100% unit-tested).
 - `EvaluationProvider` (OpenAI, structured outputs) + Zod + retry + grounding filter.

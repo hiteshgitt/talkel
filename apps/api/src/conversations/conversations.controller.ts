@@ -72,6 +72,13 @@ export class ConversationsController {
     return this.conversations.end(user.id, id);
   }
 
+  /** Try the after-call feedback again if it failed. */
+  @Post('conversations/:id/feedback/retry')
+  @HttpCode(202)
+  retryFeedback(@CurrentUser() user: SessionUser, @Param('id') id: string): Promise<void> {
+    return this.conversations.retryFeedback(user.id, id);
+  }
+
   /** Start/stop recording the live call (both voices). */
   @Post('conversations/:id/recording')
   @HttpCode(200)

@@ -9,7 +9,7 @@ export const LAYER_VERSIONS = {
   safety: 'safety-v1',
   correction: 'correction-v1',
   difficulty: 'difficulty-v1',
-  learner: 'learner-v1',
+  learner: 'learner-v2',
   tools: 'tools-v2',
   accent: 'accent-v1',
 } as const;
@@ -84,12 +84,29 @@ const GOAL_HINTS: Partial<Record<LearningGoal, string>> = {
  * Learner layer: creates opportunities for practice without ever announcing them
  * (PRD §35: ask "What did you do last weekend?", don't say "Now practise the past tense").
  */
-export function learnerLayer(goals: readonly LearningGoal[]): string | null {
-  const hints = goals.map((g) => GOAL_HINTS[g]).filter((h): h is string => Boolean(h));
+/** Recurring mistake categories → questions that naturally invite practising them. */
+const WEAK_SPOT_OPPORTUNITIES: Record<string, string> = {
+  VERB_TENSE: 'talking about past events and future plans (ask what they did, or will do)',
+  SUBJECT_VERB_AGREEMENT: 'describing other people’s habits and routines (he/she/they)',
+  ARTICLES: 'describing specific places, objects and people',
+  PREPOSITIONS: 'saying where and when things happen',
+  QUESTION_FORM: 'asking you questions (invite them to ask you something)',
+  WORD_ORDER: 'explaining things step by step',
+  PLURALS: 'talking about quantities and groups of things',
+  PRONOUNS: 'talking about other people',
+  VERB_FORM: 'describing what they like, want or need to do',
+  WORD_CHOICE: 'describing feelings and opinions precisely',
+};
+
+export function learnerLayer(goals: readonly LearningGoal[], weakSpots: readonly string[] = []): string | null {
+  const hints = [
+    ...weakSpots.map((w) => WEAK_SPOT_OPPORTUNITIES[w]).filter((h): h is string => Boolean(h)),
+    ...goals.map((g) => GOAL_HINTS[g]).filter((h): h is string => Boolean(h)),
+  ];
   if (hints.length === 0) return null;
   return (
-    `Where it fits your role naturally, give the user chances to practise ${hints.slice(0, 3).join(', ')}. ` +
-    'Never mention that you are doing this.'
+    `Where it fits your role naturally, give the user chances to practise ${hints.slice(0, 3).join('; ')}. ` +
+    'Never mention that you are doing this, and never correct them for it.'
   );
 }
 

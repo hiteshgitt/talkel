@@ -1,4 +1,5 @@
 import type { MediaStream, RTCPeerConnection } from '@livekit/react-native-webrtc';
+import { DeviceEventEmitter, type EmitterSubscription, PermissionsAndroid, Platform } from 'react-native';
 import type InCallManagerType from 'react-native-incall-manager';
 import { api, friendlyError } from '@/lib/api';
 import { nativeCallingProblem } from '@/lib/runtime';
@@ -7,11 +8,17 @@ export type CallPhase = 'connecting' | 'active' | 'reconnecting' | 'ending' | 'e
 /** Who is audibly "holding the floor" right now — drives the listening/speaking indicator. */
 export type Floor = 'none' | 'user' | 'ai';
 
+/** Where call audio plays (InCallManager's Android device names). */
+export type AudioRoute = 'EARPIECE' | 'SPEAKER_PHONE' | 'WIRED_HEADSET' | 'BLUETOOTH';
+const ROUTE_ORDER: AudioRoute[] = ['BLUETOOTH', 'WIRED_HEADSET', 'EARPIECE', 'SPEAKER_PHONE'];
+
 export interface CallState {
   phase: CallPhase;
   floor: Floor;
   muted: boolean;
-  speaker: boolean;
+  /** Current audio output, and the outputs available right now (a headset appears when connected). */
+  audioRoute: AudioRoute;
+  audioRoutes: AudioRoute[];
   connectedAt: number | null;
   /** Seconds left when the server's one-minute warning arrives. */
   warningSecondsLeft: number | null;
@@ -40,7 +47,8 @@ export class RealtimeCall {
     phase: 'connecting',
     floor: 'none',
     muted: false,
-    speaker: false,
+    audioRoute: 'EARPIECE',
+    audioRoutes: ['EARPIECE', 'SPEAKER_PHONE'],
     connectedAt: null,
     warningSecondsLeft: null,
     recording: false,
@@ -52,6 +60,7 @@ export class RealtimeCall {
   private pc: RTCPeerConnection | null = null;
   private mic: MediaStream | null = null;
   private incall: typeof InCallManagerType | null = null;
+  private routeSub: EmitterSubscription | null = null;
   private iceTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectDeadline: number | null = null;
   private readySent = false;
@@ -80,7 +89,15 @@ export class RealtimeCall {
       this.webrtc = await import('@livekit/react-native-webrtc');
       this.incall = (await import('react-native-incall-manager')).default;
 
-      // Phone-call audio mode: earpiece by default, echo-cancelled voice path, proximity handling.
+      // Android 12+ only routes to a Bluetooth headset with the "Nearby devices" permission, and it
+      // must be granted before the audio manager starts. Refusing is fine: earpiece/speaker still work.
+      await requestBluetoothPermission();
+      this.routeSub = DeviceEventEmitter.addListener('onAudioDeviceChanged', (e: { availableAudioDeviceList?: string; selectedAudioDevice?: string }) =>
+        this.onAudioDevices(e),
+      );
+
+      // Phone-call audio mode: a connected headset first, else the earpiece; echo-cancelled voice
+      // path, proximity handling.
       this.incall.start({ media: 'audio' });
       this.incall.setForceSpeakerphoneOn(false);
 
@@ -102,10 +119,26 @@ export class RealtimeCall {
     this.set({ muted });
   }
 
-  toggleSpeaker(): void {
-    const speaker = !this.state.speaker;
-    this.incall?.setForceSpeakerphoneOn(speaker);
-    this.set({ speaker });
+  /** Cycles through the available outputs (e.g. Bluetooth → phone → speaker). */
+  nextAudioRoute(): void {
+    const routes = this.state.audioRoutes;
+    const next = routes[(routes.indexOf(this.state.audioRoute) + 1) % routes.length];
+    if (!next || !this.incall) return;
+    this.set({ audioRoute: next }); // optimistic; the device event confirms
+    void this.incall.chooseAudioRoute(next).catch(() => undefined);
+  }
+
+  private onAudioDevices(e: { availableAudioDeviceList?: string; selectedAudioDevice?: string }): void {
+    let available: string[] = [];
+    try {
+      available = JSON.parse(e.availableAudioDeviceList ?? '[]') as string[];
+    } catch {
+      return;
+    }
+    const routes = ROUTE_ORDER.filter((r) => available.includes(r));
+    if (routes.length === 0) return;
+    const selected = routes.find((r) => r === e.selectedAudioDevice) ?? this.state.audioRoute;
+    this.set({ audioRoutes: routes, audioRoute: selected });
   }
 
   async toggleRecording(): Promise<void> {
@@ -268,11 +301,23 @@ export class RealtimeCall {
     this.mic = null;
     this.pc?.close();
     this.pc = null;
+    this.routeSub?.remove();
+    this.routeSub = null;
     this.incall?.stop();
   }
 
   private set(patch: Partial<CallState>): void {
     this.state = { ...this.state, ...patch };
     for (const l of this.listeners) l(this.state);
+  }
+}
+
+async function requestBluetoothPermission(): Promise<void> {
+  if (Platform.OS !== 'android' || Number(Platform.Version) < 31) return;
+  const permission = PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT;
+  try {
+    if (!(await PermissionsAndroid.check(permission))) await PermissionsAndroid.request(permission);
+  } catch {
+    // not fatal: the call just won't use a Bluetooth headset
   }
 }
