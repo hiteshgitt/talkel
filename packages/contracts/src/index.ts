@@ -19,9 +19,6 @@ export const ProblemDetails = z.object({
 });
 export type ProblemDetails = z.infer<typeof ProblemDetails>;
 
-export const VoiceChoice = z.enum(['female', 'male']);
-export type VoiceChoice = z.infer<typeof VoiceChoice>;
-
 export const Speaker = z.enum(['USER', 'AI']);
 export type Speaker = z.infer<typeof Speaker>;
 
@@ -128,28 +125,114 @@ export const AuthConfig = z.object({
 });
 export type AuthConfig = z.infer<typeof AuthConfig>;
 
-// ───────────── Milestone 0: voice POC ─────────────
-// Minimal surface to prove the realtime loop. Replaced by /v1/conversations in M2.
+// ───────────── Scenarios & personas (M2) ─────────────
 
-export const PocConnectRequest = z.object({
-  /** SDP offer produced by the device's RTCPeerConnection. */
+export const ScenarioSummary = z.object({
+  id: z.string(),
+  slug: z.string(),
+  category: z.object({ slug: z.string(), name: z.string() }),
+  title: z.string(),
+  tagline: z.string(),
+  minLevel: EnglishLevel,
+  estimatedMinutes: z.number().int(),
+});
+export type ScenarioSummary = z.infer<typeof ScenarioSummary>;
+
+export const PersonaSummary = z.object({
+  id: z.string(),
+  slug: z.string(),
+  name: z.string(),
+  gender: VoiceGender,
+  description: z.string(),
+});
+export type PersonaSummary = z.infer<typeof PersonaSummary>;
+
+export const Catalog = z.object({ scenarios: z.array(ScenarioSummary), personas: z.array(PersonaSummary) });
+export type Catalog = z.infer<typeof Catalog>;
+
+// ───────────── Conversations (M2) ─────────────
+
+export const DURATION_OPTIONS_SEC = [180, 300, 600] as const;
+
+export const Quota = z.object({
+  dailyLimitSec: z.number().int(),
+  usedTodaySec: z.number().int(),
+  remainingSec: z.number().int(),
+  /** ISO timestamp of the next reset (midnight in the user's time zone). */
+  resetsAt: z.string(),
+});
+export type Quota = z.infer<typeof Quota>;
+
+export const CreateConversationRequest = z.object({
+  scenarioId: z.string().uuid(),
+  personaId: z.string().uuid(),
+  difficulty: EnglishLevel.optional(),
+  durationSec: z.number().int().min(60).max(1800).optional(),
+  liveCorrection: z.boolean().optional(),
+});
+export type CreateConversationRequest = z.infer<typeof CreateConversationRequest>;
+
+export const ConversationBrief = z.object({
+  title: z.string(),
+  briefing: z.string(),
+  userRole: z.string(),
+  objective: z.string(),
+});
+export type ConversationBrief = z.infer<typeof ConversationBrief>;
+
+export const SessionStatus = z.enum(['CREATED', 'CONNECTING', 'ACTIVE', 'RECONNECTING', 'ENDED', 'FAILED', 'EXPIRED']);
+export type SessionStatus = z.infer<typeof SessionStatus>;
+
+export const EndReason = z.enum([
+  'USER_ENDED',
+  'TIME_LIMIT',
+  'OBJECTIVE_COMPLETED',
+  'AI_NATURAL_END',
+  'CONNECTION_LOST',
+  'PROVIDER_CLOSED',
+  'QUOTA_EXHAUSTED',
+  'SERVER_RESTART',
+  'ERROR',
+]);
+export type EndReason = z.infer<typeof EndReason>;
+
+export const CreateConversationResponse = z.object({
+  id: z.string(),
+  brief: ConversationBrief,
+  persona: PersonaSummary,
+  difficulty: EnglishLevel,
+  /** Planned length, already capped by the remaining daily allowance. */
+  durationSec: z.number().int(),
+});
+export type CreateConversationResponse = z.infer<typeof CreateConversationResponse>;
+
+export const ConnectRequest = z.object({
   sdpOffer: z.string().min(1).max(20_000),
-  voice: VoiceChoice,
+  /** True when re-joining the same conversation after a network drop. */
+  reconnect: z.boolean().optional(),
 });
-export type PocConnectRequest = z.infer<typeof PocConnectRequest>;
+export type ConnectRequest = z.infer<typeof ConnectRequest>;
 
-export const PocConnectResponse = z.object({
-  callId: z.string(),
-  sdpAnswer: z.string(),
-  maxDurationSec: z.number().int().positive(),
+export const ConnectResponse = z.object({ sdpAnswer: z.string(), durationSec: z.number().int() });
+export type ConnectResponse = z.infer<typeof ConnectResponse>;
+
+export const ConversationSummary = z.object({
+  id: z.string(),
+  scenarioTitle: z.string(),
+  personaName: z.string(),
+  difficulty: EnglishLevel,
+  status: SessionStatus,
+  endReason: EndReason.nullable(),
+  createdAt: z.string(),
+  durationMs: z.number().int().nullable(),
+  turnCount: z.number().int(),
 });
-export type PocConnectResponse = z.infer<typeof PocConnectResponse>;
+export type ConversationSummary = z.infer<typeof ConversationSummary>;
 
-export const PocCallStatus = z.enum(['CONNECTING', 'ACTIVE', 'ENDED', 'FAILED']);
-export type PocCallStatus = z.infer<typeof PocCallStatus>;
+export const ConversationList = z.object({ items: z.array(ConversationSummary), nextCursor: z.string().nullable() });
+export type ConversationList = z.infer<typeof ConversationList>;
 
-export const PocEndReason = z.enum(['USER_ENDED', 'TIME_LIMIT', 'PROVIDER_CLOSED', 'CONNECTION_LOST', 'ERROR']);
-export type PocEndReason = z.infer<typeof PocEndReason>;
+// ───────────── Transcript ─────────────
 
 export const TranscriptTurn = z.object({
   seq: z.number().int().nonnegative(),
@@ -164,11 +247,11 @@ export const TranscriptTurn = z.object({
 });
 export type TranscriptTurn = z.infer<typeof TranscriptTurn>;
 
-export const PocTranscriptResponse = z.object({
-  callId: z.string(),
-  status: PocCallStatus,
-  endReason: PocEndReason.nullable(),
-  durationMs: z.number().int().nonnegative().nullable(),
+// ───────────── Conversation detail ─────────────
+
+export const ConversationDetail = ConversationSummary.extend({
+  brief: ConversationBrief,
+  goals: z.array(z.object({ id: z.string(), description: z.string(), achieved: z.boolean() })),
   turns: z.array(TranscriptTurn),
 });
-export type PocTranscriptResponse = z.infer<typeof PocTranscriptResponse>;
+export type ConversationDetail = z.infer<typeof ConversationDetail>;

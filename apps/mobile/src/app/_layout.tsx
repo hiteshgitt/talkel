@@ -55,8 +55,10 @@ function AppNavigator() {
       </Stack.Protected>
       <Stack.Protected guard={onboarded}>
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="scenario/[id]" />
+        <Stack.Screen name="brief/[id]" />
         <Stack.Screen name="call" options={{ gestureEnabled: false }} />
-        <Stack.Screen name="transcript/[callId]" options={{ headerShown: true, title: 'Transcript' }} />
+        <Stack.Screen name="conversation/[id]" />
       </Stack.Protected>
     </Stack>
   );

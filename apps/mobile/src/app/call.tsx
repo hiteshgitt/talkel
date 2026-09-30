@@ -1,4 +1,4 @@
-import { VoiceChoice } from '@speakai/contracts';
+import { useQueryClient } from '@tanstack/react-query';
 import { useKeepAwake } from 'expo-keep-awake';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
@@ -6,26 +6,29 @@ import { Animated, BackHandler, Easing, Pressable, StyleSheet, Text, View } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { CallState, RealtimeCall } from '@/call/realtime-call';
 import { useRealtimeCall } from '@/call/use-realtime-call';
+import { CONVERSATIONS_KEY, QUOTA_KEY } from '@/lib/queries';
 import { colors, radius } from '@/theme';
-
-const PERSONA_NAME: Record<VoiceChoice, string> = { female: 'Maya', male: 'Rohan' };
 
 export default function CallScreen() {
   useKeepAwake();
-  const params = useLocalSearchParams<{ voice?: string }>();
-  const voice = VoiceChoice.catch('female').parse(params.voice);
-  const { call, state } = useRealtimeCall(voice);
+  const qc = useQueryClient();
+  const params = useLocalSearchParams<{ conversationId: string; personaName?: string; title?: string }>();
+  const { conversationId } = params;
+  const personaName = params.personaName ?? 'Your partner';
+  const { call, state } = useRealtimeCall(conversationId);
 
   const endCall = useCallback(async () => {
-    const callId = await call?.hangUp();
-    if (!callId) router.back(); // never connected: nothing to show
+    await call?.hangUp();
   }, [call]);
 
-  // Whoever ended the call (user, time limit, server), show its transcript.
-  const endedCallId = state?.phase === 'ended' ? state.callId : null;
+  // However the call ended (user, time limit, AI said goodbye), show the saved conversation.
+  const ended = state?.phase === 'ended';
   useEffect(() => {
-    if (endedCallId) router.replace({ pathname: '/transcript/[callId]', params: { callId: endedCallId } });
-  }, [endedCallId]);
+    if (!ended) return;
+    void qc.invalidateQueries({ queryKey: QUOTA_KEY });
+    void qc.invalidateQueries({ queryKey: CONVERSATIONS_KEY });
+    router.replace({ pathname: '/conversation/[id]', params: { id: conversationId } });
+  }, [ended, conversationId, qc]);
 
   // Hardware back behaves like "end call" rather than silently leaving a live call.
   useEffect(() => {
@@ -41,20 +44,28 @@ export default function CallScreen() {
   return (
     <SafeAreaView style={styles.root}>
       <View style={styles.header}>
-        <Text style={styles.scenario}>Friendly Conversation</Text>
+        <Text style={styles.scenario}>{params.title ?? 'Conversation'}</Text>
         <CallTimer connectedAt={state.connectedAt} />
+        {state.warningSecondsLeft !== null && state.phase === 'active' ? (
+          <Text style={styles.warning} accessibilityLiveRegion="polite">
+            About {Math.max(1, Math.round(state.warningSecondsLeft / 60))} minute left
+          </Text>
+        ) : null}
       </View>
 
       <View style={styles.center}>
-        <Avatar name={PERSONA_NAME[voice]} floor={state.floor} />
-        <Text style={styles.name}>{PERSONA_NAME[voice]}</Text>
+        <Avatar name={personaName} floor={state.floor} />
+        <Text style={styles.name}>{personaName}</Text>
         <Text style={styles.status} accessibilityLiveRegion="polite">
           {statusText(state)}
         </Text>
       </View>
 
       {state.phase === 'failed' ? (
-        <FailedPanel state={state} onDone={endCall} />
+        <FailedPanel
+          state={state}
+          onDone={() => router.replace({ pathname: '/conversation/[id]', params: { id: conversationId } })}
+        />
       ) : (
         <Controls call={call} state={state} onEnd={endCall} />
       )}
@@ -145,11 +156,11 @@ function FailedPanel({ state, onDone }: { state: CallState; onDone: () => void }
   return (
     <View style={styles.failed}>
       <Text style={styles.failedText}>
-        Your conversation could not continue.{state.callId ? ' Your session has been saved.' : ''}
+        Your conversation could not continue. What you said so far has been saved.
       </Text>
       {state.error ? <Text style={styles.failedDetail}>{state.error}</Text> : null}
       <Pressable style={styles.failedButton} onPress={onDone} accessibilityRole="button">
-        <Text style={styles.failedButtonText}>{state.callId ? 'View transcript' : 'Back'}</Text>
+        <Text style={styles.failedButtonText}>View conversation</Text>
       </Pressable>
     </View>
   );
@@ -186,6 +197,7 @@ const styles = StyleSheet.create({
   header: { alignItems: 'center', gap: 4, marginTop: 12 },
   scenario: { color: colors.textMuted, fontSize: 15 },
   timer: { color: colors.text, fontSize: 17, fontVariant: ['tabular-nums'] },
+  warning: { color: colors.accent, fontSize: 14, fontWeight: '600', marginTop: 4 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
   avatarWrap: { width: AVATAR + 40, height: AVATAR + 40, alignItems: 'center', justifyContent: 'center' },
   ring: { position: 'absolute', width: AVATAR + 32, height: AVATAR + 32, borderRadius: radius.pill, borderWidth: 4 },

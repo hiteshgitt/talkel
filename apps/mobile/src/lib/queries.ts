@@ -12,9 +12,30 @@ export const queryClient = new QueryClient({
 });
 
 export const ME_KEY = ['me'] as const;
+export const QUOTA_KEY = ['quota'] as const;
+export const CONVERSATIONS_KEY = ['conversations'] as const;
+/** The just-created conversation (brief, partner), handed from setup to the brief screen. */
+export const createdConversationKey = (id: string) => ['created-conversation', id] as const;
+export const conversationKey = (id: string) => ['conversation', id] as const;
 
 export function useMe(enabled = true) {
   return useQuery({ queryKey: ME_KEY, queryFn: api.me, enabled });
+}
+
+/** Scenarios and personas change rarely: cache for 10 minutes. */
+export function useCatalog() {
+  return useQuery({ queryKey: ['catalog'], queryFn: api.catalog, staleTime: 10 * 60_000 });
+}
+
+export function useQuota() {
+  return useQuery({ queryKey: QUOTA_KEY, queryFn: api.quota });
+}
+
+export function formatMinutes(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  if (m === 0) return `${s} sec`;
+  return s === 0 ? `${m} min` : `${m} min ${s} sec`;
 }
 
 /** Updates settings and writes the server's response straight into the cache. */

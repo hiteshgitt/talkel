@@ -1,6 +1,6 @@
 import { createWriteStream, mkdirSync, type WriteStream } from 'node:fs';
 import { join } from 'node:path';
-import type { CallEventLog } from './live-call.js';
+import type { CallEventLog } from '../realtime/usage.js';
 
 /** Append-only JSONL log per call: logs/calls/<callId>.jsonl — input to the M0 latency/transcript report. */
 export class JsonlCallLog implements CallEventLog {

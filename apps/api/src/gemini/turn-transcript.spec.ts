@@ -51,6 +51,19 @@ describe('TurnTranscript', () => {
     ]);
   });
 
+  it('keeps lagging AI text in the AI turn when the user barges in', () => {
+    const tx = new TurnTranscript();
+    tx.aiText('But don’t you think collaboration is easier when you’re sitting', 0);
+    tx.userSpeechStarted(1500); // user talks over the AI…
+    tx.aiText(' next to your team?', 1600); // …while the AI's transcript is still catching up
+    tx.interrupted();
+    tx.userText('Wait, one question', 2000);
+    expect(view(tx)).toEqual([
+      ['AI', 'But don’t you think collaboration is easier when you’re sitting next to your team?', true],
+      ['USER', 'Wait, one question', false],
+    ]);
+  });
+
   it('drops empty finalised turns (noise onsets) and marks everything final at the end', () => {
     const tx = new TurnTranscript();
     tx.userSpeechStarted(0); // cough

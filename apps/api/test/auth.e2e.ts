@@ -2,8 +2,8 @@
  * Accounts, sessions and ownership against a real (test) Postgres and the compiled server.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import pg from 'pg';
-import { type ApiProcess, startApi, TEST_DATABASE_URL, WEB_ORIGIN } from './support/api-process.js';
+import { type ApiProcess, startApi, WEB_ORIGIN } from './support/api-process.js';
+import * as users from './support/users.js';
 
 let api: ApiProcess;
 
@@ -13,43 +13,13 @@ beforeAll(async () => {
 afterAll(() => api?.stop());
 
 const json = { 'Content-Type': 'application/json', Origin: WEB_ORIGIN };
+const signUp = (email: string, password?: string, extra?: Record<string, unknown>) => users.signUp(api, email, password, extra);
+const verifiedUser = (email: string) => users.verifiedUser(api, email);
+const setRole = users.setRole;
 
-async function signUp(email: string, password = 'correct-horse-9', extra: Record<string, unknown> = {}) {
-  return fetch(`${api.base}/auth/sign-up/email`, {
-    method: 'POST',
-    headers: json,
-    body: JSON.stringify({ email, password, name: email.split('@')[0], ...extra }),
-  });
-}
 
-/** The server logs emails when SMTP is off; pull the newest verification link for this address. */
-async function verificationLink(email: string): Promise<string> {
-  for (let i = 0; i < 50; i++) {
-    const out = api.output();
-    const at = out.lastIndexOf(`email to ${email}:`);
-    const match = at >= 0 ? out.slice(at).match(/https?:\/\/\S*verify-email\S*/) : null;
-    if (match) return match[0];
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  throw new Error(`no verification email for ${email}. Server output tail:\n${api.output().slice(-1500)}`);
-}
 
-/** Signs up, verifies, and returns the session cookie. */
-async function verifiedUser(email: string): Promise<string> {
-  expect((await signUp(email)).status).toBe(200);
-  const res = await fetch(await verificationLink(email), { redirect: 'manual' });
-  expect(res.status).toBe(302);
-  const cookie = res.headers.getSetCookie().find((c) => c.includes('session_token'));
-  expect(cookie).toBeDefined();
-  return cookie!.split(';')[0]!;
-}
 
-async function setRole(email: string, role: 'user' | 'admin'): Promise<void> {
-  const db = new pg.Client({ connectionString: TEST_DATABASE_URL });
-  await db.connect();
-  await db.query('UPDATE users SET role = $1 WHERE email = $2', [role, email]);
-  await db.end();
-}
 
 const me = (cookie?: string) => fetch(`${api.base}/me`, { headers: cookie ? { Cookie: cookie } : {} });
 
@@ -171,19 +141,16 @@ describe('/v1/admin', () => {
   });
 });
 
-describe('voice routes', () => {
+describe('conversation routes', () => {
   it('require a session or the dev token', async () => {
-    const res = await fetch(`${api.base}/poc/connect`, {
+    const res = await fetch(`${api.base}/conversations`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sdpOffer: 'v=0', voice: 'female' }),
+      body: JSON.stringify({}),
     });
     expect(res.status).toBe(401);
+    const asDevScript = await fetch(`${api.base}/quota`, { headers: { Authorization: 'Bearer e2e-dev-token-0123456789' } });
+    expect(asDevScript.status).toBe(200);
   });
 
-  it("hide other users' calls (404, not 403)", async () => {
-    const cookie = await verifiedUser('dave@example.com');
-    const res = await fetch(`${api.base}/poc/calls/call_someone-elses/transcript`, { headers: { Cookie: cookie } });
-    expect(res.status).toBe(404);
-  });
 });

@@ -24,4 +24,7 @@ export default async function setup(): Promise<void> {
   } finally {
     await client.end();
   }
+
+  // Scenario and persona content, as in development.
+  execFileSync('pnpm', ['seed'], { cwd: dbPackage, env: { ...process.env, DATABASE_URL: TEST_DATABASE_URL }, stdio: 'pipe' });
 }

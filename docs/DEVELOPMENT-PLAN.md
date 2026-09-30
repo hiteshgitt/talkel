@@ -48,6 +48,13 @@ AI replies → user interrupts mid-sentence → AI stops and continues naturally
 
 ## Milestone 2 — Conversation lifecycle on real data
 
+> **Status (2026-09-30): done** (server and app; the phone test is pending).
+> - **Content:** 5 scenarios (casual, interview, client, debate, negotiation) with per-call randomised variants, and 4 personas, seeded as immutable versions. Sessions pin the scenario version, persona version and every prompt-layer version.
+> - **Engine:** layered instructions (core, correction, safety, scenario, persona, difficulty, learner goals, tools). English-only rule. Per-level turn-taking. Tools are kept minimal for latency: `end_conversation` (refused in the first 45 s) and `record_offer` (a server-side clamp stops the seller going below its floor price).
+> - **API:** `/v1/catalog`, `/v1/quota` (10 min per local day), `/v1/conversations` (create → connect → ready → end; list, detail, delete). Transcripts are saved every 10 s. Reconnection keeps the AI session alive for 20 s while the phone rejoins. Conversations left open by a restart are closed and still count toward the quota.
+> - **Change from plan:** "goal achieved" is **not** a live tool. It added about 0.7 s of response latency, and judging belongs to the evaluation AI (PRD §76), so it moves to M3. Measured live response latency afterwards: 0.9–1.65 s.
+> - **Tests:** 67 unit tests; 16 API e2e tests, including a full lifecycle over real WebRTC against a fake Gemini Live server; live calls in 4 scenarios against real Gemini.
+
 - Catalog endpoints; the 5 MVP scenarios seeded (PRD §63); 4 personas.
 - `conversation-engine`: instruction assembly (all layers), state machine, timers, wrap-up, heartbeat, tools (`mark_goal_achieved`, `update_scenario_state`, `end_conversation`) with clamping.
 - `realtime` module promoted from the POC to the `RealtimeVoiceProvider` interface. Incremental turn/event persistence. Session-owner lock.

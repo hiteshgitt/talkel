@@ -124,6 +124,8 @@ interface EngineState {
 }
 ```
 
+> **M2 decision:** the realtime model only gets `end_conversation`, plus `record_offer` for negotiations. `mark_goal_achieved` was tried and removed, because each extra tool call added noticeable response latency and goal judging belongs to the evaluation AI. The table below is the original design.
+
 **Tools exposed to the realtime model.** The set is kept small because every tool call risks adding latency to that turn:
 
 | Tool | Purpose | Server handling |

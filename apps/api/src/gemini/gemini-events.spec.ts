@@ -20,6 +20,13 @@ describe('normalizeGeminiMessage', () => {
     expect(events[1]).toEqual({ type: 'ai.audio', pcm24k: pcm });
   });
 
+  it('drops transcription markers like <no speech detected>', () => {
+    expect(normalizeGeminiMessage({ serverContent: { outputTranscription: { text: '<no speech detected>' } } })).toEqual([]);
+    expect(normalizeGeminiMessage({ serverContent: { inputTranscription: { text: 'I think <noise> yes' } } })).toEqual([
+      { type: 'user.transcript', text: 'I think  yes' },
+    ]);
+  });
+
   it('reports interruption', () => {
     expect(normalizeGeminiMessage({ serverContent: { interrupted: true } })).toEqual([{ type: 'interrupted' }]);
   });
@@ -40,6 +47,12 @@ describe('normalizeGeminiMessage', () => {
       type: 'usage',
       usage: { inputAudioTokens: 200, inputTextTokens: 800, cachedInputTokens: 0, outputAudioTokens: 300, outputTextTokens: 0 },
     });
+  });
+
+  it('parses tool calls', () => {
+    expect(
+      normalizeGeminiMessage({ toolCall: { functionCalls: [{ id: 'c1', name: 'record_offer', args: { price: 1800 } }] } }),
+    ).toEqual([{ type: 'tool_call', calls: [{ id: 'c1', name: 'record_offer', args: { price: 1800 } }] }]);
   });
 
   it('ignores garbage and non-audio inline data', () => {

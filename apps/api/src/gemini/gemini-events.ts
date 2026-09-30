@@ -14,7 +14,8 @@ export type GeminiEvent =
   | { type: 'interrupted' }
   | { type: 'turn_complete' }
   | { type: 'usage'; usage: RealtimeUsage }
-  | { type: 'go_away'; timeLeft: string | null };
+  | { type: 'go_away'; timeLeft: string | null }
+  | { type: 'tool_call'; calls: Array<{ id: string; name: string; args: unknown }> };
 
 const ModalityCount = z.object({ modality: z.string().optional(), tokenCount: z.number().optional() });
 
@@ -50,7 +51,17 @@ const ServerMessage = z.object({
     })
     .optional(),
   goAway: z.object({ timeLeft: z.string().optional() }).optional(),
+  toolCall: z
+    .object({
+      functionCalls: z.array(z.object({ id: z.string(), name: z.string(), args: z.unknown().optional() })).optional(),
+    })
+    .optional(),
 });
+
+/** Transcription placeholders such as "<no speech detected>" or "<noise>" are markers, not speech. */
+function cleanTranscript(text: string | undefined): string {
+  return (text ?? '').replace(/<[^<>]{1,40}>/g, '');
+}
 
 export function normalizeGeminiMessage(raw: unknown): GeminiEvent[] {
   const parsed = ServerMessage.safeParse(raw);
@@ -63,20 +74,24 @@ export function normalizeGeminiMessage(raw: unknown): GeminiEvent[] {
   const sc = m.serverContent;
   if (sc) {
     // Input transcription first: it describes speech that happened before this model output.
-    if (sc.inputTranscription?.text) out.push({ type: 'user.transcript', text: sc.inputTranscription.text });
+    const userText = cleanTranscript(sc.inputTranscription?.text);
+    if (userText.trim()) out.push({ type: 'user.transcript', text: userText });
     for (const part of sc.modelTurn?.parts ?? []) {
       const d = part.inlineData;
       if (d && (d.mimeType ?? '').startsWith('audio/pcm')) {
         out.push({ type: 'ai.audio', pcm24k: Buffer.from(d.data, 'base64') });
       }
     }
-    if (sc.outputTranscription?.text) out.push({ type: 'ai.transcript', text: sc.outputTranscription.text });
+    const aiText = cleanTranscript(sc.outputTranscription?.text);
+    if (aiText.trim()) out.push({ type: 'ai.transcript', text: aiText });
     if (sc.interrupted) out.push({ type: 'interrupted' });
     if (sc.turnComplete) out.push({ type: 'turn_complete' });
   }
 
   if (m.usageMetadata) out.push({ type: 'usage', usage: toUsage(m.usageMetadata) });
   if (m.goAway) out.push({ type: 'go_away', timeLeft: m.goAway.timeLeft ?? null });
+  const calls = m.toolCall?.functionCalls ?? [];
+  if (calls.length > 0) out.push({ type: 'tool_call', calls: calls.map((c) => ({ id: c.id, name: c.name, args: c.args ?? {} })) });
   return out;
 }
 

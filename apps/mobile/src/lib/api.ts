@@ -1,11 +1,16 @@
 import {
+  Catalog,
+  type ConnectRequest,
+  ConnectResponse,
+  ConversationDetail,
+  ConversationList,
+  type CreateConversationRequest,
+  CreateConversationResponse,
   Me,
   type OnboardingRequest,
-  PocConnectResponse,
-  PocTranscriptResponse,
   ProblemDetails,
-  type PocConnectRequest,
   type ProfilePatch,
+  Quota,
   type SettingsPatch,
 } from '@speakai/contracts';
 import type { z } from 'zod';
@@ -65,18 +70,37 @@ async function request<S extends z.ZodType>(
   return schema ? schema.parse(json) : (undefined as z.infer<S>);
 }
 
+const conv = (id: string) => `/conversations/${encodeURIComponent(id)}`;
+
 export const api = {
   me: () => request('/me', { method: 'GET' }, Me),
   completeOnboarding: (body: OnboardingRequest) => request('/me/onboarding', { method: 'POST', body }, Me),
   updateProfile: (body: ProfilePatch) => request('/me/profile', { method: 'PATCH', body }, Me),
   updateSettings: (body: SettingsPatch) => request('/me/settings', { method: 'PATCH', body }, Me),
+
+  catalog: () => request('/catalog', { method: 'GET' }, Catalog),
+  quota: () => request('/quota', { method: 'GET' }, Quota),
+
+  createConversation: (body: CreateConversationRequest) =>
+    request('/conversations', { method: 'POST', body }, CreateConversationResponse),
+  conversations: (cursor?: string) =>
+    request(`/conversations${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, { method: 'GET' }, ConversationList),
+  conversation: (id: string) => request(conv(id), { method: 'GET' }, ConversationDetail),
+  deleteConversation: (id: string) => request(conv(id), { method: 'DELETE' }, null),
+
+  connect: (id: string, body: ConnectRequest) => request(`${conv(id)}/connect`, { method: 'POST', body }, ConnectResponse),
+  ready: (id: string) => request(`${conv(id)}/ready`, { method: 'POST' }, null),
+  end: (id: string) => request(`${conv(id)}/end`, { method: 'POST' }, ConversationDetail),
 };
 
-export const pocApi = {
-  connect: (body: PocConnectRequest) => request('/poc/connect', { method: 'POST', body }, PocConnectResponse),
-  ready: (callId: string) => request(`/poc/calls/${encodeURIComponent(callId)}/ready`, { method: 'POST' }, null),
-  end: (callId: string) =>
-    request(`/poc/calls/${encodeURIComponent(callId)}/end`, { method: 'POST' }, PocTranscriptResponse),
-  transcript: (callId: string) =>
-    request(`/poc/calls/${encodeURIComponent(callId)}/transcript`, { method: 'GET' }, PocTranscriptResponse),
-};
+/** Friendly text for the API's error codes that users can hit in normal use. */
+export function friendlyError(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.code === 'QUOTA_EXCEEDED') return 'You’ve used today’s free practice time. It resets at midnight.';
+    if (err.code === 'ACTIVE_CONVERSATION_EXISTS') return 'You already have a conversation in progress.';
+    if (err.code === 'SESSION_NOT_CONNECTABLE') return 'This conversation expired. Please start a new one.';
+    if (err.code === 'PROVIDER_QUOTA_EXHAUSTED' || err.code === 'PROVIDER_UNAVAILABLE') return 'The AI voice service is busy. Please try again in a moment.';
+    return err.message;
+  }
+  return err instanceof Error ? err.message : 'Something went wrong.';
+}

@@ -57,6 +57,10 @@ const EnvSchema = z.object({
     .transform((v) => (v && v.trim() !== '' ? v.trim() : undefined))
     .refine((v) => v === undefined || v.length >= 16, 'POC_DEV_TOKEN must be at least 16 characters'),
   POC_MAX_SESSION_SECONDS: z.coerce.number().int().min(90).max(3600).default(300),
+  /** Free conversation time per user per local day (PRD decision: 10 minutes). */
+  FREE_DAILY_SECONDS: z.coerce.number().int().min(60).default(600),
+  /** Hard cap on any single conversation, whatever the user asks for. */
+  CONVERSATION_MAX_SECONDS: z.coerce.number().int().min(60).max(3600).default(1800),
   CALL_LOG_DIR: z.string().min(1).default('./logs/calls'),
 });
 

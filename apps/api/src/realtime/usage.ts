@@ -1,17 +1,4 @@
-import type { PocEndReason, PocTranscriptResponse } from '@speakai/contracts';
-import type { RealtimeUsage } from '../realtime/realtime-events.js';
-
-/** What the POC service needs from a live call, whichever provider/transport runs it. */
-export interface LiveCall {
-  readonly callId: string;
-  readonly isEnded: boolean;
-  readonly usage: RealtimeUsage;
-  start(): void;
-  /** Device media is up; the AI may speak first. */
-  markMediaReady(): void;
-  end(reason: PocEndReason): Promise<void>;
-  snapshot(): PocTranscriptResponse;
-}
+import type { RealtimeUsage } from './realtime-events.js';
 
 export interface CallEventLog {
   write(entry: { t: number; dir: 'in' | 'out' | 'sys'; event: unknown }): void;

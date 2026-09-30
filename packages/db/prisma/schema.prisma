@@ -19,20 +19,22 @@ datasource db {
 // Field names follow Better Auth's core schema; do not rename without updating the auth config.
 
 model User {
-  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name          String
-  email         String    @unique
-  emailVerified Boolean   @default(false)
+  email         String   @unique
+  emailVerified Boolean  @default(false)
   image         String?
   /// "user" | "admin". Server-owned: Better Auth is configured with input: false.
-  role          String    @default("user")
-  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
-  updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
+  role          String   @default("user")
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
 
-  sessions Session[]
-  accounts Account[]
-  profile  Profile?
-  settings UserSettings?
+  sessions      Session[]
+  accounts      Account[]
+  profile       Profile?
+  settings      UserSettings?
+  conversations ConversationSession[]
+  usageRecords  UsageRecord[]
 
   @@map("users")
 }
@@ -140,4 +142,214 @@ model UserSettings {
   updatedAt            DateTime       @updatedAt @db.Timestamptz(3)
 
   @@map("user_settings")
+}
+
+// ───────────── Content: scenarios & personas (M2) ─────────────
+// Published scenario versions are immutable; sessions pin the exact version they used (PRD §78).
+
+enum ContentStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model ScenarioCategory {
+  id        String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug      String     @unique
+  name      String
+  sortOrder Int        @default(0)
+  scenarios Scenario[]
+
+  @@map("scenario_categories")
+}
+
+model Scenario {
+  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug               String            @unique
+  categoryId         String            @db.Uuid
+  category           ScenarioCategory  @relation(fields: [categoryId], references: [id])
+  isActive           Boolean           @default(false)
+  sortOrder          Int               @default(0)
+  publishedVersionId String?           @unique @db.Uuid
+  publishedVersion   ScenarioVersion?  @relation("Published", fields: [publishedVersionId], references: [id])
+  versions           ScenarioVersion[] @relation("Versions")
+  createdAt          DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime          @updatedAt @db.Timestamptz(3)
+
+  @@map("scenarios")
+}
+
+model ScenarioVersion {
+  id               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  scenarioId       String        @db.Uuid
+  scenario         Scenario      @relation("Versions", fields: [scenarioId], references: [id])
+  version          Int
+  status           ContentStatus @default(DRAFT)
+  /// Selects the params schema and engine behaviour: casual | interview | client | debate | negotiation
+  kind             String
+  title            String
+  /// One line for lists
+  tagline          String
+  /// Shown to the user before the call (PRD §24) — never the AI's questions
+  briefing         String
+  userRole         String
+  objective        String
+  minLevel         EnglishLevel  @default(BEGINNER)
+  estimatedMinutes Int           @default(5)
+  /// Scenario layer of the AI instructions
+  promptTemplate   String
+  /// Per-kind parameters (validated by the engine); may contain hidden values like a floor price
+  params           Json
+  /// [{ id, description }]
+  goals            Json
+  createdAt        DateTime      @default(now()) @db.Timestamptz(3)
+  publishedAt      DateTime?     @db.Timestamptz(3)
+
+  publishedFor Scenario?             @relation("Published")
+  sessions     ConversationSession[]
+
+  @@unique([scenarioId, version])
+  @@map("scenario_versions")
+}
+
+model Persona {
+  id             String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug           String                @unique
+  name           String
+  gender         VoiceGender
+  /// Provider voice ids, e.g. { "gemini": "Kore", "openai": "marin" }
+  voices         Json
+  /// Short personality/background shown in the app
+  description    String
+  /// Persona layer of the AI instructions
+  promptFragment String
+  isActive       Boolean               @default(true)
+  sortOrder      Int                   @default(0)
+  version        Int                   @default(1)
+  sessions       ConversationSession[]
+
+  @@map("personas")
+}
+
+// ───────────── Conversations (M2) ─────────────
+
+enum SessionStatus {
+  CREATED
+  CONNECTING
+  ACTIVE
+  RECONNECTING
+  ENDED
+  FAILED
+  EXPIRED
+}
+
+enum EndReason {
+  USER_ENDED
+  TIME_LIMIT
+  OBJECTIVE_COMPLETED
+  AI_NATURAL_END
+  CONNECTION_LOST
+  PROVIDER_CLOSED
+  QUOTA_EXHAUSTED
+  SERVER_RESTART
+  ERROR
+}
+
+enum Speaker {
+  USER
+  AI
+}
+
+model ConversationSession {
+  id                 String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId             String          @db.Uuid
+  user               User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scenarioVersionId  String          @db.Uuid
+  scenarioVersion    ScenarioVersion @relation(fields: [scenarioVersionId], references: [id])
+  personaId          String          @db.Uuid
+  persona            Persona         @relation(fields: [personaId], references: [id])
+  difficulty         EnglishLevel
+  liveCorrection     Boolean         @default(false)
+  plannedDurationSec Int
+  status             SessionStatus   @default(CREATED)
+  endReason          EndReason?
+  startedAt          DateTime?       @db.Timestamptz(3)
+  endedAt            DateTime?       @db.Timestamptz(3)
+  durationMs         Int?
+  /// Reproducibility (PRD §78): provider/model, prompt layer versions, persona version
+  provider           String
+  model              String
+  promptVersions     Json
+  instructionsHash   String
+  /// Randomised per session (topic, item, prices…) plus live updates from tools
+  scenarioState      Json
+  goalsAchieved      String[]        @default([])
+  createdAt          DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime        @updatedAt @db.Timestamptz(3)
+
+  turns  ConversationTurn[]
+  events ConversationEvent[]
+  usage  UsageRecord[]
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([status])
+  @@map("conversation_sessions")
+}
+
+model ConversationTurn {
+  id          String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId   String              @db.Uuid
+  session     ConversationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  seq         Int
+  speaker     Speaker
+  text        String
+  /// Offset from call start
+  startMs     Int
+  interrupted Boolean             @default(false)
+  createdAt   DateTime            @default(now()) @db.Timestamptz(3)
+
+  @@unique([sessionId, seq])
+  @@map("conversation_turns")
+}
+
+model ConversationEvent {
+  id        BigInt              @id @default(autoincrement())
+  sessionId String              @db.Uuid
+  session   ConversationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  /// STARTED, READY, TOOL_CALL, WRAP_UP, RECONNECTED, MEDIA_STATS, ENDED, ERROR …
+  type      String
+  atMs      Int
+  payload   Json?
+  createdAt DateTime            @default(now()) @db.Timestamptz(3)
+
+  @@index([sessionId, atMs])
+  @@map("conversation_events")
+}
+
+enum UsageKind {
+  REALTIME
+  EVALUATION
+  TRANSCRIPTION
+}
+
+model UsageRecord {
+  id                String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId            String               @db.Uuid
+  user              User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionId         String?              @db.Uuid
+  session           ConversationSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  kind              UsageKind
+  provider          String
+  model             String
+  /// Seconds of conversation counted against the daily limit
+  billableSeconds   Int                  @default(0)
+  inputAudioTokens  Int                  @default(0)
+  outputAudioTokens Int                  @default(0)
+  inputTextTokens   Int                  @default(0)
+  outputTextTokens  Int                  @default(0)
+  cachedInputTokens Int                  @default(0)
+  createdAt         DateTime             @default(now()) @db.Timestamptz(3)
+
+  @@index([userId, createdAt])
+  @@map("usage_records")
 }

@@ -1,8 +1,7 @@
-import type { VoiceChoice } from '@speakai/contracts';
-import type InCallManagerType from 'react-native-incall-manager';
 import type { MediaStream, RTCPeerConnection } from '@livekit/react-native-webrtc';
+import type InCallManagerType from 'react-native-incall-manager';
+import { api, friendlyError } from '@/lib/api';
 import { nativeCallingProblem } from '@/lib/runtime';
-import { pocApi } from '@/lib/api';
 
 export type CallPhase = 'connecting' | 'active' | 'reconnecting' | 'ending' | 'ended' | 'failed';
 /** Who is audibly "holding the floor" right now — drives the listening/speaking indicator. */
@@ -11,41 +10,48 @@ export type Floor = 'none' | 'user' | 'ai';
 export interface CallState {
   phase: CallPhase;
   floor: Floor;
-  callId: string | null;
   muted: boolean;
   speaker: boolean;
   connectedAt: number | null;
+  /** Seconds left when the server's one-minute warning arrives. */
+  warningSecondsLeft: number | null;
   error: string | null;
 }
 
 type Listener = (state: CallState) => void;
+type WebRtc = typeof import('@livekit/react-native-webrtc');
 
-const DISCONNECT_GRACE_MS = 5_000;
+/** Wait this long for ICE to recover on its own before rebuilding the connection. */
+const ICE_GRACE_MS = 4_000;
+/** The server keeps the AI session alive for 20 s; give up a little before that. */
+const RECONNECT_WINDOW_MS = 18_000;
 
 /**
- * One realtime voice call. Media goes device ⇄ provider over WebRTC; the backend only handles
- * signalling and control (docs/VOICE-ARCHITECTURE.md §3). Framework-free so the React layer
- * stays thin.
+ * One voice conversation. The phone talks WebRTC to our voice gateway, which bridges to the AI.
+ * If the network drops, a fresh peer connection rejoins the same conversation (the AI keeps
+ * its context on the server). Framework-free so the React layer stays thin.
  */
 export class RealtimeCall {
   private state: CallState = {
     phase: 'connecting',
     floor: 'none',
-    callId: null,
     muted: false,
     speaker: false,
     connectedAt: null,
+    warningSecondsLeft: null,
     error: null,
   };
   private readonly listeners = new Set<Listener>();
+  private webrtc: WebRtc | null = null;
   private pc: RTCPeerConnection | null = null;
   private mic: MediaStream | null = null;
-  private disconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private incall: typeof InCallManagerType | null = null;
+  private iceTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectDeadline: number | null = null;
   private readySent = false;
   private closed = false;
-  private incall: typeof InCallManagerType | null = null;
 
-  constructor(private readonly voice: VoiceChoice) {}
+  constructor(readonly conversationId: string) {}
 
   getState(): CallState {
     return this.state;
@@ -63,53 +69,24 @@ export class RealtimeCall {
       return;
     }
     try {
-      // Loaded lazily: the native module only exists in our development/production builds, and
-      // Expo Router evaluates every route at startup, so a top-level import would crash the app.
-      const { mediaDevices, RTCPeerConnection: PeerConnection } = await import('@livekit/react-native-webrtc');
+      // Loaded lazily: the native modules only exist in our own builds, and Expo Router evaluates
+      // every route at startup, so a top-level import would crash the app elsewhere.
+      this.webrtc = await import('@livekit/react-native-webrtc');
       this.incall = (await import('react-native-incall-manager')).default;
 
       // Phone-call audio mode: earpiece by default, echo-cancelled voice path, proximity handling.
       this.incall.start({ media: 'audio' });
       this.incall.setForceSpeakerphoneOn(false);
 
-      // react-native-webrtc enables echo cancellation, noise suppression and AGC by default on
-      // Android (its typings don't expose those constraint keys).
-      this.mic = await mediaDevices.getUserMedia({ audio: true });
+      // WebRTC applies echo cancellation, noise suppression and AGC by default on Android.
+      this.mic = await this.webrtc.mediaDevices.getUserMedia({ audio: true });
       if (this.closed) {
         for (const t of this.mic.getTracks()) t.stop();
         return;
       }
-
-      // STUN lets the phone find a public address when it isn't on the server's LAN.
-      const pc = new PeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-      this.pc = pc;
-      for (const track of this.mic.getAudioTracks()) pc.addTrack(track, this.mic);
-
-      // Event channel to whichever peer answers: our voice gateway (Gemini mode) sends
-      // `floor` / `call.ended`; OpenAI (openai mode) sends its own VAD events. Only used for UI.
-      // OpenAI requires this exact label; our gateway accepts any.
-      const events = pc.createDataChannel('oai-events');
-      events.onopen = () => void this.onMediaReady();
-      // The library types message events as a bare Event; at runtime they carry `data`.
-      events.onmessage = (e) => this.onProviderEvent((e as unknown as { data: unknown }).data);
-
-      pc.onconnectionstatechange = () => this.onConnectionState(pc.connectionState);
-
-      const offer = await pc.createOffer({ offerToReceiveAudio: true });
-      await pc.setLocalDescription(offer);
-      const sdpOffer = pc.localDescription?.sdp;
-      if (!sdpOffer) throw new Error('Could not create a call offer');
-
-      const { callId, sdpAnswer } = await pocApi.connect({ sdpOffer, voice: this.voice });
-      if (this.closed) {
-        // User hung up while we were connecting: make sure the server-side call doesn't linger.
-        void pocApi.end(callId).catch(() => undefined);
-        return;
-      }
-      this.set({ callId });
-      await pc.setRemoteDescription({ type: 'answer', sdp: sdpAnswer });
+      await this.connect(false);
     } catch (err) {
-      if (!this.closed) this.fail(err instanceof Error ? err.message : 'Could not start the call');
+      if (!this.closed) this.fail(friendlyError(err));
     }
   }
 
@@ -125,96 +102,147 @@ export class RealtimeCall {
     this.set({ speaker });
   }
 
-  /** User hangs up. Returns the call id so the UI can show the transcript. */
-  async hangUp(): Promise<string | null> {
-    const { callId, phase } = this.state;
-    if (phase === 'ended' || phase === 'ending') return callId;
+  /** User hangs up (or the server ended the call). */
+  async hangUp(): Promise<void> {
+    const { phase } = this.state;
+    if (phase === 'ended' || phase === 'ending') return;
     this.set({ phase: 'ending' });
-    if (callId) {
-      try {
-        await pocApi.end(callId);
-      } catch {
-        // The server also ends calls on its own timers; the transcript is still retrievable.
-      }
+    try {
+      await api.end(this.conversationId);
+    } catch {
+      // The server also ends calls on its own; the conversation is saved either way.
     }
     this.cleanup();
     this.set({ phase: 'ended', floor: 'none' });
-    return callId;
   }
 
-  private async onMediaReady(): Promise<void> {
-    const { callId } = this.state;
-    if (this.readySent || !callId) return;
+  // ───────────── connection ─────────────
+
+  private async connect(reconnect: boolean): Promise<void> {
+    const webrtc = this.webrtc;
+    const mic = this.mic;
+    if (!webrtc || !mic) return;
+
+    // STUN lets the phone find a public address when it isn't on the server's network.
+    const pc = new webrtc.RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+    this.pc = pc;
+    for (const track of mic.getAudioTracks()) pc.addTrack(track, mic);
+
+    // Control channel from our gateway: speaking indicator, time warning, server-side end.
+    const events = pc.createDataChannel('events');
+    events.onopen = () => void this.onMediaUp();
+    // The library types message events as a bare Event; at runtime they carry `data`.
+    events.onmessage = (e) => this.onControl((e as unknown as { data: unknown }).data);
+    pc.onconnectionstatechange = () => {
+      if (pc === this.pc) this.onConnectionState(pc.connectionState);
+    };
+
+    await pc.setLocalDescription(await pc.createOffer({ offerToReceiveAudio: true }));
+    const sdpOffer = pc.localDescription?.sdp;
+    if (!sdpOffer) throw new Error('Could not create a call offer');
+
+    const { sdpAnswer } = await api.connect(this.conversationId, { sdpOffer, reconnect });
+    if (this.closed || pc !== this.pc) {
+      pc.close();
+      return;
+    }
+    await pc.setRemoteDescription({ type: 'answer', sdp: sdpAnswer });
+  }
+
+  private async onMediaUp(): Promise<void> {
+    if (this.state.phase === 'reconnecting') {
+      this.reconnectDeadline = null;
+      this.set({ phase: 'active', error: null });
+      return;
+    }
+    if (this.readySent) return;
     this.readySent = true;
     this.set({ phase: 'active', connectedAt: Date.now() });
     try {
-      await pocApi.ready(callId); // server asks the AI to speak first
+      await api.ready(this.conversationId); // the AI opens the conversation
     } catch (err) {
-      this.fail(err instanceof Error ? err.message : 'Could not start the conversation');
+      this.fail(friendlyError(err));
     }
   }
 
-  private onProviderEvent(data: unknown): void {
+  private onConnectionState(s: string): void {
+    if (this.closed) return;
+    if (s === 'connected') {
+      if (this.iceTimer) clearTimeout(this.iceTimer);
+      this.iceTimer = null;
+      if (this.state.phase === 'reconnecting' && this.reconnectDeadline === null) this.set({ phase: 'active' });
+      return;
+    }
+    if (!this.readySent) {
+      if (s === 'failed') this.fail('Could not connect the call');
+      return;
+    }
+    if (s === 'disconnected') {
+      // Short blips usually recover on their own; rebuild only if they don't.
+      this.set({ phase: 'reconnecting' });
+      this.iceTimer ??= setTimeout(() => void this.rejoin(), ICE_GRACE_MS);
+    } else if (s === 'failed') {
+      void this.rejoin();
+    }
+  }
+
+  /** Builds a new peer connection and rejoins the same conversation on the server. */
+  private async rejoin(): Promise<void> {
+    if (this.closed) return;
+    if (this.iceTimer) clearTimeout(this.iceTimer);
+    this.iceTimer = null;
+    this.reconnectDeadline ??= Date.now() + RECONNECT_WINDOW_MS;
+    this.set({ phase: 'reconnecting' });
+
+    while (!this.closed && Date.now() < this.reconnectDeadline) {
+      this.pc?.close();
+      this.pc = null;
+      try {
+        await this.connect(true);
+        return; // onMediaUp flips us back to "active"
+      } catch (err) {
+        const msg = friendlyError(err);
+        if (msg.includes('already ended')) break;
+        await new Promise((r) => setTimeout(r, 2_000));
+      }
+    }
+    if (!this.closed && this.state.phase === 'reconnecting') {
+      this.fail('Connection lost');
+    }
+  }
+
+  private onControl(data: unknown): void {
     if (typeof data !== 'string') return;
-    let event: { type?: unknown; floor?: unknown };
+    let event: { type?: unknown; floor?: unknown; secondsRemaining?: unknown };
     try {
       event = JSON.parse(data) as typeof event;
     } catch {
       return;
     }
     switch (event.type) {
-      // Our voice gateway (provider-agnostic)
       case 'floor':
         if (event.floor === 'user' || event.floor === 'ai' || event.floor === 'none') this.set({ floor: event.floor });
         break;
+      case 'time_warning':
+        if (typeof event.secondsRemaining === 'number') this.set({ warningSecondsLeft: event.secondsRemaining });
+        break;
       case 'call.ended':
-        // Server ended the call (time limit, provider closed): wrap up like a normal hang-up.
         void this.hangUp();
         break;
-      // OpenAI Realtime direct mode
-      case 'input_audio_buffer.speech_started':
-        this.set({ floor: 'user' });
-        break;
-      case 'input_audio_buffer.speech_stopped':
-        if (this.state.floor === 'user') this.set({ floor: 'none' });
-        break;
-      case 'output_audio_buffer.started':
-        this.set({ floor: 'ai' });
-        break;
-      case 'output_audio_buffer.stopped':
-      case 'output_audio_buffer.cleared':
-        if (this.state.floor === 'ai') this.set({ floor: 'none' });
-        break;
-    }
-  }
-
-  private onConnectionState(s: string): void {
-    if (this.state.phase === 'ending' || this.state.phase === 'ended') return;
-    if (s === 'connected') {
-      if (this.disconnectTimer) clearTimeout(this.disconnectTimer);
-      this.disconnectTimer = null;
-      if (this.state.phase === 'reconnecting') this.set({ phase: 'active' });
-    } else if (s === 'disconnected') {
-      // Brief network blips recover on their own via ICE; only give up after a grace period.
-      this.set({ phase: 'reconnecting' });
-      this.disconnectTimer ??= setTimeout(() => this.fail('Connection lost'), DISCONNECT_GRACE_MS);
-    } else if (s === 'failed') {
-      this.fail('Connection lost');
     }
   }
 
   private fail(message: string): void {
     if (this.state.phase === 'ended' || this.state.phase === 'failed') return;
-    const { callId } = this.state;
-    if (callId) void pocApi.end(callId).catch(() => undefined); // make sure the server stops billing
+    void api.end(this.conversationId).catch(() => undefined); // make sure the server stops the AI
     this.cleanup();
     this.set({ phase: 'failed', floor: 'none', error: message });
   }
 
   private cleanup(): void {
     this.closed = true;
-    if (this.disconnectTimer) clearTimeout(this.disconnectTimer);
-    this.disconnectTimer = null;
+    if (this.iceTimer) clearTimeout(this.iceTimer);
+    this.iceTimer = null;
     for (const t of this.mic?.getTracks() ?? []) t.stop();
     this.mic = null;
     this.pc?.close();

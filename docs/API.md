@@ -54,6 +54,8 @@ All request and response bodies are defined as Zod schemas in `packages/contract
 
 ## Conversations
 
+> **As implemented in M2:** the catalog is `GET /v1/catalog` (scenarios + personas in one call), and the quota is `GET /v1/quota`. `POST /conversations/:id/connect` takes `{ sdpOffer, reconnect? }` and returns `{ sdpAnswer, durationSec }`. The WebRTC data channel from our voice gateway carries `{type:"floor"}`, `{type:"time_warning", secondsRemaining}` and `{type:"call.ended", reason}`, which replaces the separate control WebSocket described below.
+
 ### `POST /conversations` — create
 ```jsonc
 // request

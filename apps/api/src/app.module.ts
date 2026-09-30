@@ -6,8 +6,10 @@ import { AuthModule } from './auth/auth.module.js';
 import { ProblemException } from './common/problem.js';
 import { ENV, type Env } from './config/env.js';
 import { PRISMA, PrismaModule } from './db/prisma.module.js';
-import { PocController } from './poc/poc.controller.js';
-import { PocCallsService } from './poc/poc-calls.service.js';
+import { CatalogController } from './conversations/catalog.controller.js';
+import { ConversationsController } from './conversations/conversations.controller.js';
+import { ConversationsService } from './conversations/conversations.service.js';
+import { QuotaService } from './conversations/quota.service.js';
 import { UsersController } from './users/users.controller.js';
 import { UsersService } from './users/users.service.js';
 
@@ -37,8 +39,8 @@ export class AppModule {
         PrismaModule,
         AuthModule,
       ],
-      controllers: [HealthController, UsersController, AdminController, PocController],
-      providers: [UsersService, PocCallsService],
+      controllers: [HealthController, UsersController, AdminController, CatalogController, ConversationsController],
+      providers: [UsersService, QuotaService, ConversationsService],
     };
   }
 }

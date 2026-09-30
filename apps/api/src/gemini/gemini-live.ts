@@ -10,6 +10,8 @@ export interface LiveSession {
    * connected — greet the user"), since Gemini Live does not allow config changes mid-session.
    */
   sendCue(text: string, turnComplete: boolean): void;
+  /** Answers tool calls. SILENT scheduling: the model uses the result without an extra spoken turn. */
+  sendToolResponses(responses: Array<{ id: string; name: string; response: Record<string, unknown> }>): void;
   onEvent(handler: (e: GeminiEvent, raw: unknown) => void): void;
   onClose(handler: (code: number, reason: string) => void): void;
   close(): void;
@@ -57,6 +59,16 @@ export function connectGeminiLive(opts: GeminiLiveOptions): Promise<LiveSession>
       sendCue: (text, turnComplete) => {
         if (ws.readyState !== WebSocket.OPEN) return;
         ws.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text }] }], turnComplete } }));
+      },
+      sendToolResponses: (responses) => {
+        if (ws.readyState !== WebSocket.OPEN) return;
+        ws.send(
+          JSON.stringify({
+            toolResponse: {
+              functionResponses: responses.map((r) => ({ id: r.id, name: r.name, response: { ...r.response, scheduling: 'SILENT' } })),
+            },
+          }),
+        );
       },
       onEvent: (h) => eventHandlers.push(h),
       onClose: (h) => closeHandlers.push(h),

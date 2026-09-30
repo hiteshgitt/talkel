@@ -71,6 +71,13 @@ export class TurnTranscript {
   private currentAi(atMs: number): Turn {
     const last = this.last();
     if (last?.speaker === 'AI' && !last.final) return last;
+    // AI transcription lags its audio. If the user just started talking over the AI (an empty user
+    // turn opened after it), the text still belongs to the AI turn that is being spoken.
+    const ai = this.lastOf('AI');
+    if (ai && !ai.final) {
+      const after = this.list.slice(this.list.indexOf(ai) + 1);
+      if (after.every((t) => t.speaker === 'USER' && t.text === '')) return ai;
+    }
     return this.push('AI', atMs);
   }
 
