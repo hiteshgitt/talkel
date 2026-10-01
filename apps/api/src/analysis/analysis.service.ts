@@ -21,6 +21,8 @@ import { bandToScore, groundErrors, groundQuoted, overallScore } from './groundi
 import { LearningProfileService } from './learning-profile.service.js';
 import { computeFluency } from './metrics.js';
 import { applyAttempt, isPassed, MissionSpec, missionScore } from '../missions/mission-rules.js';
+import { memoryApplies, planMemoryChanges } from '../memory/memory-rules.js';
+import { localDateKey } from './progress-stats.js';
 
 /** Below this, there is not enough English to give honest feedback. */
 const MIN_USER_WORDS = 8;
@@ -97,6 +99,14 @@ export class AnalysisService {
           }
         : null;
 
+    // Personal memory (opt-in): only for conversations where the user speaks as themselves.
+    const memoryOn =
+      Boolean(session.user.settings?.memoryEnabled) && memoryApplies({ kind: v.kind, missionLevel: session.missionLevel, isReplay: false });
+    const existingMemories = memoryOn
+      ? await this.prisma.userMemory.findMany({ where: { userId: session.userId }, orderBy: { updatedAt: 'desc' } })
+      : [];
+    const tz = session.user.profile?.timezone ?? 'Asia/Kolkata';
+
     const prompt = buildEvaluationPrompt({
       scenario: { title: v.title, kind: v.kind, userRole: render(v.userRole), objective: render(v.objective), briefing: render(v.briefing), slug: v.scenario.slug },
       goals,
@@ -106,6 +116,12 @@ export class AnalysisService {
       fluency,
       availableScenarios: scenarios.map((s) => ({ slug: s.slug, title: s.publishedVersion?.title ?? s.slug })),
       mission,
+      memory: memoryOn
+        ? {
+            existing: existingMemories.map((m) => ({ kind: m.kind, text: m.text })),
+            today: `${localDateKey(new Date(), tz)} (${new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone: tz }).format(new Date())})`,
+          }
+        : null,
     });
 
     const result = await generateStructured(
@@ -141,6 +157,8 @@ export class AnalysisService {
     const recommendations = out.recommendations.map((r) => ({ ...r, scenarioSlug: r.scenarioSlug && slugs.has(r.scenarioSlug) ? r.scenarioSlug : null }));
     const bands = Object.fromEntries(Object.entries(out.skills).map(([k, s]) => [k, s.band])) as Record<SkillKey, number>;
     const overall = overallScore(bands);
+    const memoryChanges = memoryOn ? planMemoryChanges(existingMemories, out.memory) : [];
+    const remembered = memoryChanges.map((c) => ('update' in c ? c.update.text : c.create.text));
     const missionResult = mission ? this.missionResult(mission, out.mission, overall, achieved.length, goals.length) : null;
     const skills = Object.fromEntries(
       Object.entries(out.skills).map(([k, s]) => [k, { band: s.band, score: bandToScore(s.band), rationale: s.rationale }]),
@@ -152,6 +170,7 @@ export class AnalysisService {
           sessionId,
           overallScore: overall,
           missionResult: missionResult ?? undefined,
+          remembered,
           skills: skills as Prisma.InputJsonValue,
           summary: out.summary,
           strengths: out.strengths,
@@ -188,6 +207,13 @@ export class AnalysisService {
           outputTextTokens: result.usage.outputTokens,
         },
       });
+      for (const change of memoryChanges) {
+        if ('update' in change) {
+          await tx.userMemory.updateMany({ where: { id: change.update.id, userId: session.userId }, data: { kind: change.update.kind, text: change.update.text, sourceSessionId: sessionId } });
+        } else {
+          await tx.userMemory.create({ data: { userId: session.userId, kind: change.create.kind, text: change.create.text, sourceSessionId: sessionId } });
+        }
+      }
       if (missionResult) {
         const scenarioId = v.scenarioId;
         const prev = await tx.missionProgress.findUnique({ where: { userId_scenarioId: { userId: session.userId, scenarioId } } });

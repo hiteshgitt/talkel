@@ -84,6 +84,7 @@ function AppNavigator() {
         <Stack.Screen name="conversation/[id]" />
         <Stack.Screen name="mistakes/[category]" />
         <Stack.Screen name="mission/[id]" />
+        <Stack.Screen name="memories" />
       </Stack.Protected>
     </Stack>
   );

@@ -63,7 +63,19 @@ export class UsersService {
 
   async updateSettings(userId: string, patch: SettingsPatch): Promise<Me> {
     await this.ensureRows(userId);
-    await this.prisma.userSettings.update({ where: { userId }, data: patch });
+    const { memoryEnabled, ...rest } = patch;
+    await this.prisma.$transaction([
+      this.prisma.userSettings.update({
+        where: { userId },
+        data: {
+          ...rest,
+          // Turning memory on records when the user agreed; turning it off forgets everything.
+          ...(memoryEnabled === true ? { memoryEnabled: true, memoryConsentAt: new Date() } : {}),
+          ...(memoryEnabled === false ? { memoryEnabled: false, memoryConsentAt: null } : {}),
+        },
+      }),
+      ...(memoryEnabled === false ? [this.prisma.userMemory.deleteMany({ where: { userId } })] : []),
+    ]);
     return this.me(userId);
   }
 
@@ -113,6 +125,7 @@ function toMe(user: User, profile: Profile, settings: UserSettings): Me {
       defaultDurationSec: settings.defaultDurationSec,
       preferredVoiceGender: settings.preferredVoiceGender ? VoiceGender.parse(settings.preferredVoiceGender) : null,
       notificationsEnabled: settings.notificationsEnabled,
+      memoryEnabled: settings.memoryEnabled,
     },
     onboarded: profile.onboardedAt !== null,
     consentRequired: profile.consentVersion !== CONSENT_VERSION,

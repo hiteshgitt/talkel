@@ -2,7 +2,7 @@
  * Full conversation lifecycle against the compiled server, a real Postgres, a fake Gemini Live
  * server and a headless WebRTC phone.
  */
-import { CONSENT_VERSION, MissionList, MistakeList, Progress, SayItResult } from '@speakai/contracts';
+import { CONSENT_VERSION, MemoryList, MissionList, MistakeList, Progress, SayItResult } from '@speakai/contracts';
 import type { Catalog, ConversationDetail, ConversationList, CreateConversationResponse, Quota } from '@speakai/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type ApiProcess, startApi, startWorker } from './support/api-process.js';
@@ -446,6 +446,69 @@ describe('say it 3 ways', () => {
     expect((await post(`/conversations/${id}/say-it`, alice, { text: 'Write me a poem about Goa' })).status).toBe(400);
     expect((await post(`/conversations/${id}/say-it`, bob, { text: 'too expensive' })).status).toBe(404);
     expect((await post('/conversations/not-a-uuid/say-it', alice, { text: 'too expensive' })).status).toBe(404);
+  });
+});
+
+describe('personal memory', () => {
+  async function call(scenarioSlug: string) {
+    const created = (await (await post('/conversations', alice, { scenarioId: scenario(scenarioSlug), durationSec: 60 })).json()) as CreateConversationResponse;
+    const phone = await createFakePhone();
+    const { sdpAnswer } = (await (await post(`/conversations/${created.id}/connect`, alice, { sdpOffer: phone.offer })).json()) as { sdpAnswer: string };
+    const instructions = JSON.stringify(gemini.setups.at(-1)!.systemInstruction);
+    await phone.accept(sdpAnswer);
+    await phone.waitForDataChannel();
+    const cues = gemini.cues.length;
+    await post(`/conversations/${created.id}/ready`, alice);
+    await until(() => gemini.cues.length > cues);
+    await new Promise((r) => setTimeout(r, 700));
+    await post(`/conversations/${created.id}/end`, alice);
+    await phone.close();
+    let detail: ConversationDetail | null = null;
+    await until(async () => {
+      detail = (await (await get(`/conversations/${created.id}`, alice)).json()) as ConversationDetail;
+      return ['COMPLETED', 'FAILED', 'SKIPPED'].includes(detail.analysisStatus);
+    }, 20_000);
+    return { detail: detail as unknown as ConversationDetail, instructions, evaluation: gemini.evaluations.at(-1)! };
+  }
+
+  it('is off by default: nothing is learned or used', async () => {
+    const me = (await (await get('/me', alice)).json()) as { settings: { memoryEnabled: boolean } };
+    expect(me.settings.memoryEnabled).toBe(false);
+    const { detail, evaluation } = await call('friendly-conversation');
+    expect(evaluation).not.toContain('MEMORY (personal memory is on');
+    expect(detail.feedback!.remembered).toEqual([]);
+  });
+
+  it('when turned on, learns from casual chats, uses it next time, and can be deleted', async () => {
+    const res = await fetch(`${api.base}/me/settings`, { method: 'PATCH', headers: { Cookie: alice, 'Content-Type': 'application/json' }, body: JSON.stringify({ memoryEnabled: true }) });
+    expect(res.status).toBe(200);
+
+    const first = await call('friendly-conversation');
+    expect(first.evaluation).toContain('MEMORY (personal memory is on');
+    expect(first.detail.feedback!.remembered).toEqual(['Works as a data analyst in Pune']);
+    const list = MemoryList.parse(await (await get('/me/memories', alice)).json());
+    expect(list).toMatchObject({ enabled: true, items: [{ kind: 'WORK', text: 'Works as a data analyst in Pune' }] });
+
+    // Used in the next casual chat — but never in a mission or role-play.
+    const second = await call('friendly-conversation');
+    expect(second.instructions).toContain('Works as a data analyst in Pune');
+    expect(second.detail.feedback!.remembered).toEqual([]); // already known: not learned twice
+    const bargain = await call('bargaining');
+    expect(bargain.instructions).not.toContain('data analyst');
+    expect(bargain.evaluation).not.toContain('MEMORY (personal memory is on');
+
+    // The owner can delete an item; nobody else can.
+    const item = list.items[0]!;
+    expect((await fetch(`${api.base}/me/memories/${item.id}`, { method: 'DELETE', headers: { Cookie: bob } })).status).toBe(404);
+    expect((await fetch(`${api.base}/me/memories/${item.id}`, { method: 'DELETE', headers: { Cookie: alice } })).status).toBe(204);
+    expect(MemoryList.parse(await (await get('/me/memories', alice)).json()).items).toHaveLength(0);
+  });
+
+  it('turning memory off forgets everything', async () => {
+    await call('friendly-conversation');
+    expect(MemoryList.parse(await (await get('/me/memories', alice)).json()).items.length).toBeGreaterThan(0);
+    await fetch(`${api.base}/me/settings`, { method: 'PATCH', headers: { Cookie: alice, 'Content-Type': 'application/json' }, body: JSON.stringify({ memoryEnabled: false }) });
+    expect(MemoryList.parse(await (await get('/me/memories', alice)).json())).toEqual({ enabled: false, items: [] });
   });
 });
 

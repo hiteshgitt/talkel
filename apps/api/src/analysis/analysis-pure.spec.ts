@@ -188,6 +188,7 @@ describe('evaluation prompt', () => {
       conversationMoments: [],
       translationPatterns: [],
       goalsAchieved: [],
+      memory: [],
       mission: null,
       recommendations: [],
     };

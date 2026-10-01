@@ -39,6 +39,7 @@ model User {
   usageRecords    UsageRecord[]
   learningProfile LearningProfile?
   missionProgress MissionProgress[]
+  memories        UserMemory[]
   grammarErrors   GrammarError[]
   vocabularyItems VocabularyItem[]
 
@@ -145,6 +146,9 @@ model UserSettings {
   defaultDurationSec   Int            @default(600)
   preferredVoiceGender VoiceGender?
   notificationsEnabled Boolean        @default(true)
+  /// Personal memory (opt-in): remember things the user shares about themselves. Turning it off deletes all memories.
+  memoryEnabled        Boolean        @default(false)
+  memoryConsentAt      DateTime?      @db.Timestamptz(3)
   updatedAt            DateTime       @updatedAt @db.Timestamptz(3)
 
   @@map("user_settings")
@@ -438,6 +442,8 @@ model SessionAnalysis {
   feedbackLanguage    String
   /// Missions: { level, result, headline, reason, skills[], objectivesAchieved, objectivesTotal, missionScore, passed }
   missionResult       Json?
+  /// Personal memory: what was remembered from this conversation (shown in the feedback, for transparency)
+  remembered          String[]            @default([])
   evalModel           String
   evalPromptVersion   String
   /// Corrections dropped because they didn't match what the user actually said
@@ -523,6 +529,24 @@ model PracticeRecommendation {
 }
 
 /// Evolves after every analysed conversation (PRD §34); feeds the next conversation's learner layer (PRD §35).
+/// Personal memory: short facts the user shared about themselves (job, city, interests, upcoming events, goals).
+model UserMemory {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String   @db.Uuid
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// ABOUT | WORK | INTERESTS | UPCOMING | GOALS
+  kind            String
+  /// Third person, e.g. "Works as a full-stack developer in Bengaluru"
+  text            String
+  /// The conversation it was learned from (kept if that conversation is deleted)
+  sourceSessionId String?  @db.Uuid
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([userId, updatedAt(sort: Desc)])
+  @@map("user_memories")
+}
+
 /// "Say it 3 ways": natural / professional / casual versions of a sentence from a conversation's feedback (cached).
 model Rephrasing {
   id        String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

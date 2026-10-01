@@ -89,6 +89,8 @@ export const Me = z.object({
     defaultDurationSec: z.number().int(),
     preferredVoiceGender: VoiceGender.nullable(),
     notificationsEnabled: z.boolean(),
+    /** Personal memory (opt-in). */
+    memoryEnabled: z.boolean(),
   }),
   /** True once onboarding (level, goals, language) is complete. */
   onboarded: z.boolean(),
@@ -131,10 +133,23 @@ export const SettingsPatch = z
     defaultDurationSec: z.number().int().min(120).max(1800),
     preferredVoiceGender: VoiceGender.nullable(),
     notificationsEnabled: z.boolean(),
+    /** Turning memory off deletes everything remembered. */
+    memoryEnabled: z.boolean(),
   })
   .partial()
   .strict();
 export type SettingsPatch = z.infer<typeof SettingsPatch>;
+
+// ───────────── Personal memory ─────────────
+
+export const MemoryKind = z.enum(['ABOUT', 'WORK', 'INTERESTS', 'UPCOMING', 'GOALS']);
+export type MemoryKind = z.infer<typeof MemoryKind>;
+
+export const MemoryItem = z.object({ id: z.string(), kind: MemoryKind, text: z.string(), createdAt: z.string(), updatedAt: z.string() });
+export type MemoryItem = z.infer<typeof MemoryItem>;
+
+export const MemoryList = z.object({ enabled: z.boolean(), items: z.array(MemoryItem) });
+export type MemoryList = z.infer<typeof MemoryList>;
 
 /** Public: which sign-in methods the server has enabled (e.g. Google only when configured). */
 export const AuthConfig = z.object({
@@ -433,6 +448,8 @@ export const Feedback = z.object({
   recommendations: z.array(z.object({ type: z.string(), scenarioSlug: z.string().nullable(), title: z.string(), reason: z.string() })),
   /** Missions only. */
   mission: MissionResult.nullable(),
+  /** Personal memory: what Talkel remembered from this conversation (empty when memory is off). */
+  remembered: z.array(z.string()),
   feedbackLanguage: FeedbackLanguage,
 });
 export type Feedback = z.infer<typeof Feedback>;

@@ -67,3 +67,15 @@
 - Catalog DTO leakage test (hidden params).
 - LLM output validation failure path (malformed JSON → retry → FAILED, never a crash).
 - Account deletion removes all rows and objects (verified with DB and bucket inspection in an integration test).
+
+## 2c. Personal memory (added 2026-10-01)
+
+- Opt-in per user (`user_settings.memoryEnabled`, consent time in `memoryConsentAt`); off by default. Turning it off deletes
+  all `user_memories` rows in the same transaction. Rows cascade with the account.
+- Learned only from conversations where the user speaks as themselves (casual chat, practice interview) — never missions,
+  role-plays or replays. The evaluator is instructed to exclude health, religion, caste, politics, sexuality, exact money
+  amounts, ID numbers, addresses, phone numbers, passwords and details about other people; at most 5 new facts per call,
+  30 per user. Verified against a transcript containing a fever and a salary: neither was stored.
+- Every new or updated item is shown in that conversation's feedback ("Talkel will remember"), and the user can view and
+  delete items individually or all at once.
+

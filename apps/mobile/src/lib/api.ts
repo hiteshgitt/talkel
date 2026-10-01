@@ -7,6 +7,7 @@ import {
   type CreateConversationRequest,
   CreateConversationResponse,
   Me,
+  MemoryList,
   MissionList,
   MistakeList,
   type OnboardingRequest,
@@ -86,6 +87,9 @@ export const api = {
   quota: () => request('/quota', { method: 'GET' }, Quota),
   progress: () => request('/progress', { method: 'GET' }, Progress),
   missions: () => request('/missions', { method: 'GET' }, MissionList),
+  memories: () => request('/me/memories', { method: 'GET' }, MemoryList),
+  deleteMemory: (id: string) => request(`/me/memories/${encodeURIComponent(id)}`, { method: 'DELETE' }, null),
+  clearMemories: () => request('/me/memories', { method: 'DELETE' }, null),
   mistakes: (category: string) => request(`/progress/mistakes/${encodeURIComponent(category)}`, { method: 'GET' }, MistakeList),
 
   createConversation: (body: CreateConversationRequest) =>

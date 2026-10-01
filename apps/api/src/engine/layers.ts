@@ -14,6 +14,7 @@ export const LAYER_VERSIONS = {
   accent: 'accent-v1',
   pressure: 'pressure-v1',
   replay: 'replay-v1',
+  memory: 'memory-v1',
 } as const;
 
 export const CORE = `
@@ -160,6 +161,21 @@ export const TURN_TAKING: Record<EnglishLevel, { silenceMs: number; endSensitivi
   ADVANCED: { silenceMs: 600, endSensitivity: 'END_SENSITIVITY_HIGH' },
   EXPERT: { silenceMs: 500, endSensitivity: 'END_SENSITIVITY_HIGH' },
 };
+
+/**
+ * Personal memory (opt-in): what the user shared in earlier conversations. Used like a friend or
+ * colleague who remembers — never recited, never presented as "notes".
+ */
+export function memoryLayer(memories: readonly string[]): string | null {
+  if (memories.length === 0) return null;
+  return [
+    'What you remember about the user from earlier conversations (they chose to let you remember):',
+    ...memories.map((m) => `- ${m}`),
+    'Use this naturally, like someone who knows them: when it fits, ask a follow-up (for example how something went). ' +
+      'Do not list these facts, do not say you have notes or a memory, and do not assume time-bound things are still true. ' +
+      'If they correct you, accept it.',
+  ].join('\n');
+}
 
 /** Replays ("try that answer again"): one question, one answer, one short reaction, then end. */
 export const REPLAY = `

@@ -45,6 +45,7 @@ import { LearningProfileService } from '../analysis/learning-profile.service.js'
 import { QuotaService } from './quota.service.js';
 import { entitlementsFor } from '../users/users.service.js';
 import { MissionSpec, objectivesOf } from '../missions/mission-rules.js';
+import { MEMORIES_IN_PROMPT, memoryApplies } from '../memory/memory-rules.js';
 
 const MIN_REMAINING_TO_START_SEC = 30;
 const CONNECT_WINDOW_MS = 5 * 60_000; // time to read the brief before starting
@@ -152,6 +153,10 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
       liveCorrection,
       learnerGoals,
       missionLevel,
+      memories:
+        settings?.memoryEnabled && memoryApplies({ kind: version.kind, missionLevel, isReplay: false })
+          ? (await this.prisma.userMemory.findMany({ where: { userId }, orderBy: { updatedAt: 'desc' }, take: MEMORIES_IN_PROMPT })).map((m) => m.text)
+          : [],
       learnerWeakSpots: await this.profiles.weakSpots(userId),
       timeZone: user.profile?.timezone ?? 'Asia/Kolkata',
       recentSituations: version.kind === 'casual' ? await this.recentSituations(userId) : [],
@@ -785,6 +790,7 @@ function toFeedback(a: AnalysisRow): Feedback {
     // Older analyses (eval-v1) have none; tolerate anything malformed rather than failing the page.
     phrasing: Feedback.shape.phrasing.catch([]).parse(a.phrasing),
     mission: Feedback.shape.mission.catch(null).parse(a.missionResult ?? null),
+    remembered: a.remembered,
     conversationMoments: Feedback.shape.conversationMoments.catch([]).parse(a.conversationMoments),
     recommendations: a.recommendations.map((r) => ({ type: r.type, scenarioSlug: r.scenarioSlug, title: r.title, reason: r.reason })),
     feedbackLanguage: FeedbackLanguage.catch('en').parse(a.feedbackLanguage),

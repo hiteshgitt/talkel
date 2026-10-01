@@ -14,6 +14,7 @@ import { AnalysisQueue } from './analysis/analysis-queue.js';
 import { ProgressController } from './analysis/progress.controller.js';
 import { MissionsController } from './missions/missions.controller.js';
 import { RephraseService } from './analysis/rephrase.service.js';
+import { MemoryController } from './users/memory.controller.js';
 import { LearningProfileService } from './analysis/learning-profile.service.js';
 import { LocalRecordingStore, RECORDING_STORE } from './recording/recording-store.js';
 import { UsersController } from './users/users.controller.js';
@@ -45,7 +46,7 @@ export class AppModule {
         PrismaModule,
         AuthModule,
       ],
-      controllers: [HealthController, UsersController, AdminController, CatalogController, ConversationsController, ProgressController, MissionsController],
+      controllers: [HealthController, UsersController, AdminController, CatalogController, ConversationsController, ProgressController, MissionsController, MemoryController],
       providers: [
         UsersService,
         QuotaService,

@@ -12,6 +12,7 @@ import {
   LAYER_VERSIONS,
   learnerLayer,
   LIVE_CORRECTION,
+  memoryLayer,
   NO_CORRECTION,
   PRESSURE,
   REPLAY,
@@ -52,6 +53,8 @@ export interface PrepareInput {
   accent: Accent;
   liveCorrection: boolean;
   learnerGoals: readonly LearningGoal[];
+  /** Personal memory (opt-in), already filtered to conversations where it fits. */
+  memories?: readonly string[];
   /** Missions: pressure level 1–5 (null/undefined for practice conversations). */
   missionLevel?: number | null;
   /** Recurring mistake categories from the learning profile (PRD §35). */
@@ -107,6 +110,7 @@ export function prepareConversation(input: PrepareInput): PreparedConversation {
     DIFFICULTY[input.difficulty],
     input.missionLevel ? PRESSURE[Math.min(5, Math.max(1, input.missionLevel)) as 1 | 2 | 3 | 4 | 5] : null,
     replay ? null : learnerLayer(input.learnerGoals, input.learnerWeakSpots),
+    replay ? null : memoryLayer(input.memories ?? []),
     TOOLS_GUIDANCE,
     replay ? REPLAY : null,
   ]
@@ -123,6 +127,7 @@ export function prepareConversation(input: PrepareInput): PreparedConversation {
       personaId: input.persona.id,
       personaVersion: input.persona.version,
       ...(replay ? { replay: LAYER_VERSIONS.replay } : {}),
+      ...(!replay && input.memories?.length ? { memory: LAYER_VERSIONS.memory } : {}),
     },
     scenarioState: rolled.values,
     hiddenKeys: rolled.hidden,

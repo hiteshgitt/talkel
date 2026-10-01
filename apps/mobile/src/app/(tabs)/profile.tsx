@@ -2,12 +2,14 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import type { FeedbackLanguage, VoiceGender } from '@speakai/contracts';
 import { useQueryClient } from '@tanstack/react-query';
 import Constants from 'expo-constants';
+import { router } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { IconBadge } from '@/components/art';
 import { Gradient } from '@/components/gradient';
 import { LEVEL_LABEL } from '@/components/pickers';
-import { Badge, Card, Choice, ErrorText, Screen, Title } from '@/components/ui';
+import { Badge, Button, Card, Choice, ErrorText, ListRow, Screen, Title } from '@/components/ui';
+import { MEMORIES_KEY, MEMORY_EXPLAINER, useMemories } from '@/lib/memory';
 import { authClient } from '@/lib/auth-client';
 import { useMe, useUpdateSettings } from '@/lib/queries';
 import { makeStyles, useColors } from '@/theme';
@@ -97,6 +99,8 @@ export default function ProfileScreen() {
         </Card>
       ) : null}
 
+      <MemoryCard enabled={me.settings.memoryEnabled} />
+
       <Card>
         <View style={s.settingHead}>
           <IconBadge name={c.scheme === 'dark' ? 'moon' : 'sunny'} tint={c.warning} />
@@ -114,6 +118,73 @@ export default function ProfileScreen() {
       </Pressable>
       <Text style={s.version}>Talkel {Constants.expoConfig?.version ?? ''}</Text>
     </Screen>
+  );
+}
+
+/** Personal memory: off by default; explain first, then turn on. Turning off forgets everything. */
+function MemoryCard({ enabled }: { enabled: boolean }) {
+  const s = useStyles();
+  const c = useColors();
+  const qc = useQueryClient();
+  const update = useUpdateSettings();
+  const memories = useMemories(enabled);
+  const [step, setStep] = useState<'idle' | 'explain' | 'confirmOff'>('idle');
+  const set = (on: boolean) =>
+    update.mutate(
+      { memoryEnabled: on },
+      {
+        onSuccess: () => {
+          setStep('idle');
+          void qc.invalidateQueries({ queryKey: MEMORIES_KEY });
+        },
+      },
+    );
+  const count = memories.data?.items.length ?? 0;
+
+  return (
+    <Card>
+      <View style={s.settingHead}>
+        <IconBadge name="sparkles" tint={c.accent} />
+        <View style={s.flex}>
+          <Text style={s.settingTitle}>Memory</Text>
+          <Text style={s.settingHint}>{enabled ? 'Your partner remembers what you share.' : 'Off — every chat starts fresh.'}</Text>
+        </View>
+        <Badge label={enabled ? 'On' : 'Off'} tone={enabled ? 'success' : 'neutral'} />
+      </View>
+
+      {enabled ? (
+        <>
+          <ListRow
+            leading={<Ionicons name="list-outline" size={20} color={c.accent} />}
+            title="What Talkel remembers"
+            subtitle={count ? `${count} ${count === 1 ? 'thing' : 'things'}` : 'Nothing yet'}
+            onPress={() => router.push('/memories')}
+          />
+          {step === 'confirmOff' ? (
+            <>
+              <Text style={s.settingHint}>Turning memory off deletes everything Talkel remembers about you.</Text>
+              <Button label="Turn off and forget everything" variant="danger" onPress={() => set(false)} loading={update.isPending} />
+              <Button label="Keep memory on" variant="ghost" onPress={() => setStep('idle')} />
+            </>
+          ) : (
+            <Button label="Turn off" variant="ghost" onPress={() => setStep('confirmOff')} compact />
+          )}
+        </>
+      ) : step === 'explain' ? (
+        <>
+          {MEMORY_EXPLAINER.map((p) => (
+            <View key={p.text} style={s.point}>
+              <Ionicons name={p.icon} size={18} color={c.accent} />
+              <Text style={s.pointText}>{p.text}</Text>
+            </View>
+          ))}
+          <Button label="Turn on memory" icon="sparkles" onPress={() => set(true)} loading={update.isPending} />
+          <Button label="Not now" variant="ghost" onPress={() => setStep('idle')} />
+        </>
+      ) : (
+        <Button label="Learn more & turn on" variant="secondary" icon="sparkles-outline" onPress={() => setStep('explain')} />
+      )}
+    </Card>
   );
 }
 
@@ -135,5 +206,7 @@ const useStyles = makeStyles((c) =>
     signOutText: { color: c.danger, fontSize: 16, fontWeight: '700' },
     pressed: { opacity: 0.6 },
     version: { color: c.textFaint, fontSize: 12, textAlign: 'center' },
+    point: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
+    pointText: { color: c.text, fontSize: 14, lineHeight: 20, flex: 1 },
   }),
 );

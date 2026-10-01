@@ -2,11 +2,11 @@
  * The evaluation AI (PRD §75–76): separate from the conversation AI, optimised for accuracy and
  * structured output. Its answer is validated with Zod — raw LLM JSON is never trusted.
  */
-import { type FeedbackLanguage, GrammarCategory, MissionSkill, MomentKind } from '@speakai/contracts';
+import { type FeedbackLanguage, GrammarCategory, MemoryKind, MissionSkill, MomentKind } from '@speakai/contracts';
 import { z } from 'zod';
 import type { FluencyResult } from './metrics.js';
 
-export const EVAL_PROMPT_VERSION = 'eval-v3';
+export const EVAL_PROMPT_VERSION = 'eval-v4';
 
 const Band = z.number().int().min(1).max(5);
 const Skill = z.object({ band: Band, rationale: z.string().min(1).max(400) });
@@ -68,6 +68,8 @@ export const EvaluationOutput = z.object({
     .max(5),
   translationPatterns: z.array(z.string().max(250)).max(3),
   goalsAchieved: z.array(z.string()).max(10),
+  /** Personal memory (empty unless the input has a MEMORY section): facts the learner shared about themselves. */
+  memory: z.array(z.object({ ref: z.string().nullable(), kind: MemoryKind, text: z.string().min(3).max(140) })).max(5),
   /** Missions only (null otherwise): did the user achieve the mission, and mission-specific skills. */
   mission: z
     .object({
@@ -148,6 +150,8 @@ export interface EvaluationInput {
   availableScenarios: Array<{ slug: string; title: string }>;
   /** Missions only. `outcome` is the rendered success rule (it may mention the AI's secrets). */
   mission?: { level: number; levelName: string; aiCharacter: string; skills: readonly string[]; outcome: string } | null;
+  /** Personal memory is on for this conversation: what is already remembered, and today's date for "next Tuesday". */
+  memory?: { existing: readonly { kind: string; text: string }[]; today: string } | null;
 }
 
 const LANGUAGE_NAME: Record<FeedbackLanguage, string> = { en: 'English', hi: 'Hindi (in Devanagari script, simple everyday Hindi)' };
@@ -189,6 +193,13 @@ Rules:
   pattern with a tip. Never claim to know what language they were thinking in.
 - goalsAchieved: ids from the goal list that the learner clearly achieved.
 - recommendations: up to 3 next steps; for type SCENARIO use one of the available scenario slugs.
+- memory: an empty list unless the input has a MEMORY section. If it does: up to 5 facts the learner clearly said
+  about their REAL self — job or studies (WORK), where they live and similar (ABOUT), interests (INTERESTS), upcoming
+  events with an absolute date when known (UPCOMING), goals (GOALS). Write each in English, third person, at most 15
+  words ("Works as a data analyst in Pune"). If it updates an already remembered fact, set "ref" to its id (m1, m2…),
+  otherwise null. NEVER include health, religion, caste, politics, sexuality, exact money amounts, ID numbers,
+  addresses, phone numbers, passwords, or facts about other people beyond a general mention. Skip anything said in a
+  role, joke or hypothetical, and anything already remembered unchanged.
 - mission: null unless the input has a MISSION section. If it does: judge the result strictly by the outcome rule
   (SUCCESS / PARTIAL / FAILED), write a short factual headline (≤ 10 words, state numbers when the rule asks for them),
   a reason of 1–2 sentences, and a band (1–5) with evidence for each listed mission skill.
@@ -227,6 +238,13 @@ ${
 - The AI played: ${input.mission.aiCharacter}
 - Outcome rule: ${input.mission.outcome}
 - Mission skills to score: ${input.mission.skills.join(', ')}
+
+`
+    : ''
+}${
+  input.memory
+    ? `MEMORY (personal memory is on; today is ${input.memory.today}). Already remembered:
+${input.memory.existing.map((m, i) => `- m${i + 1} [${m.kind}] ${m.text}`).join('\n') || '- (nothing yet)'}
 
 `
     : ''

@@ -14,6 +14,9 @@ export const FAKE_MISSION = {
   ],
 };
 
+/** What the fake evaluator "learns" about the user when personal memory is on. */
+export const FAKE_MEMORY = [{ ref: null, kind: 'WORK', text: 'Works as a data analyst in Pune' }];
+
 /** The fake's "say it 3 ways". */
 export const FAKE_SAY_IT = {
   natural: 'It’s a bit too expensive for me.',
@@ -61,6 +64,7 @@ export const FAKE_EVALUATION = {
   translationPatterns: [],
   goalsAchieved: ['made_counter_offer', 'not_a_real_goal'],
   mission: null as null | Record<string, unknown>,
+  memory: [] as Array<Record<string, unknown>>,
   recommendations: [{ type: 'SCENARIO', scenarioSlug: 'debate', title: 'Try a debate', reason: 'r' }],
 };
 
@@ -101,7 +105,11 @@ export async function startFakeGemini(): Promise<FakeGemini> {
         ? FAKE_SAY_IT
         : body.includes('SECOND ANSWER (replay)')
         ? FAKE_REPLAY
-        : { ...FAKE_EVALUATION, mission: body.includes('MISSION (level') ? FAKE_MISSION : null };
+        : {
+            ...FAKE_EVALUATION,
+            mission: body.includes('MISSION (level') ? FAKE_MISSION : null,
+            memory: body.includes('MEMORY (personal memory is on') ? FAKE_MEMORY : [],
+          };
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(evaluation) }] } }], usageMetadata: { promptTokenCount: 900, candidatesTokenCount: 300 } }));
     });

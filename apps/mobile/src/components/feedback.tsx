@@ -46,6 +46,8 @@ const T = {
     youSaid: 'You said',
     tryInstead: 'Try',
     tryAgain: 'Try this moment again',
+    remembered: 'Talkel will remember',
+    manageMemory: 'See or delete what Talkel remembers',
     transcriptHint: 'Mistakes are underlined in the transcript below. Tap your line to see the fixes.',
   },
   hi: {
@@ -80,6 +82,8 @@ const T = {
     youSaid: 'आपने कहा',
     tryInstead: 'ऐसे कहें',
     tryAgain: 'यह पल फिर से आज़माएँ',
+    remembered: 'Talkel याद रखेगा',
+    manageMemory: 'Talkel क्या याद रखता है — देखें या हटाएँ',
     transcriptHint: 'नीचे ट्रांसक्रिप्ट में गलतियाँ रेखांकित हैं। सुधार देखने के लिए अपनी लाइन पर टैप करें।',
   },
 } as const;
@@ -393,6 +397,21 @@ function FeedbackView({
         </Card>
       ) : null}
 
+      {f.remembered.length ? (
+        <Card>
+          <Heading icon="sparkles-outline" tint={c.accent} title={t.remembered} />
+          {f.remembered.map((m) => (
+            <Item key={m} icon="bookmark-outline" color={c.accent}>
+              {m}
+            </Item>
+          ))}
+          <Pressable onPress={() => router.push('/memories')} accessibilityRole="button" style={({ pressed }) => [styles.manage, pressed && styles.pressed]}>
+            <Text style={styles.manageText}>{t.manageMemory}</Text>
+            <Ionicons name="chevron-forward" size={16} color={c.accent} />
+          </Pressable>
+        </Card>
+      ) : null}
+
       {f.recommendations.length ? (
         <Card>
           <Heading icon="rocket-outline" tint={c.accent} title={t.next} />
@@ -478,5 +497,7 @@ const useStyles = makeStyles((c) =>
     pressed: { opacity: 0.7 },
     tryAgain: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', backgroundColor: c.accentSoft, borderRadius: radius.pill, paddingVertical: 7, paddingHorizontal: 12, marginTop: 2 },
     tryAgainText: { color: c.accent, fontSize: 14, fontWeight: '700' },
+    manage: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingVertical: 4 },
+    manageText: { color: c.accent, fontSize: 14, fontWeight: '700' },
   }),
 );
