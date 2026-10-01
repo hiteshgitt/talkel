@@ -23,7 +23,7 @@ const EnvSchema = z.object({
   GOOGLE_CLIENT_SECRET: optionalSecret,
   /** e.g. smtp://localhost:1027 (Mailpit in dev). Empty: emails are written to the log instead. */
   SMTP_URL: optionalSecret,
-  EMAIL_FROM: z.string().min(3).default('SpeakAI <no-reply@speakai.local>'),
+  EMAIL_FROM: z.string().min(3).default('Talkel <no-reply@talkel.local>'),
   /**
    * gemini: phone ⇄ our WebRTC gateway ⇄ Gemini Live (WebSocket).
    * openai: phone ⇄ OpenAI Realtime (WebRTC) directly, with our server on the sideband.

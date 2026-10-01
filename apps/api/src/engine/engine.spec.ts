@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PERSONAS, SCENARIOS } from '@speakai/db/content';
 import { prepareConversation, publicState } from './engine.js';
 import { LIVE_CORRECTION, NO_CORRECTION } from './layers.js';
+import { renderTemplate } from './scenario-kinds.js';
 import { handleToolCall } from './tools.js';
 
 const persona = { id: 'p1', version: 1, name: PERSONAS[0]!.name, promptFragment: PERSONAS[0]!.promptFragment };
@@ -118,5 +119,53 @@ describe('handleToolCall', () => {
     expect(handleToolCall('end_conversation', { reason: 'objective_completed' }, ctx).endRequested).toBe('OBJECTIVE_COMPLETED');
     expect(handleToolCall('end_conversation', {}, ctx).endRequested).toBe('AI_NATURAL_END');
     expect(handleToolCall('delete_database', {}, ctx).response.ok).toBe(false);
+  });
+});
+
+describe('missions in the engine', () => {
+  it('rolls a role-play variant, keeps its secrets hidden and opens with its own opening', async () => {
+    const { MISSIONS } = await import('@speakai/db/content');
+    const raise = MISSIONS.find((m) => m.slug === 'mission-negotiate-raise')!;
+    const prepared = prepareConversation({
+      scenario: { id: 's', version: 1, ...raise },
+      persona: { id: 'p', version: 1, name: 'Maya', promptFragment: 'You are Maya.' },
+      difficulty: 'INTERMEDIATE',
+      accent: 'INDIAN',
+      liveCorrection: false,
+      learnerGoals: [],
+      missionLevel: 4,
+      timeZone: 'Asia/Kolkata',
+      rng: () => 0,
+    });
+    expect(prepared.hiddenKeys).toEqual(['ceiling', 'opening']);
+    expect(prepared.instructions).toContain('never go above it');
+    expect(prepared.instructions).toContain('Mission difficulty 4 of 5 (Pressure)');
+    expect(prepared.openingCue).toContain('can offer a 7% raise');
+    expect(prepared.brief.briefing).toContain('7% raise');
+    expect(JSON.stringify(prepared.brief)).not.toContain('12%'); // the ceiling stays secret
+    expect(prepared.goals[0]).toMatchObject({ id: 'made_case', label: 'Make your case with concrete results' });
+  });
+
+  it('every mission prepares at every level without missing placeholders', async () => {
+    const { MISSIONS } = await import('@speakai/db/content');
+    for (const m of MISSIONS) {
+      for (const level of [1, 2, 3, 4, 5]) {
+        let state: Record<string, string | number> = {};
+        expect(() => {
+          state = prepareConversation({
+            scenario: { id: 's', version: 1, ...m },
+            persona: { id: 'p', version: 1, name: 'Arjun', promptFragment: '' },
+            difficulty: 'ADVANCED',
+            accent: 'BRITISH',
+            liveCorrection: false,
+            learnerGoals: [],
+            missionLevel: level,
+            timeZone: 'Asia/Kolkata',
+          }).scenarioState;
+        }).not.toThrow();
+        // The evaluator's outcome rule is rendered from the same state after the call.
+        expect(() => renderTemplate(m.mission!.outcome, state)).not.toThrow();
+      }
+    }
   });
 });

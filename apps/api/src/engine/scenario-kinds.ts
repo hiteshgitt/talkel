@@ -46,7 +46,17 @@ const NegotiationParams = z.object({
     .min(1),
 });
 
-export type ScenarioKind = 'casual' | 'interview' | 'client' | 'debate' | 'negotiation';
+/**
+ * Generic role-play (missions): one variant is picked; all its fields become placeholders. `hidden`
+ * names the AI's secrets; `opening` (a template) tells the AI how to start the call.
+ */
+const RoleplayParams = z.object({
+  opening: z.string().min(5),
+  hidden: z.array(z.string()).default([]),
+  variants: z.array(z.record(z.string(), z.union([z.string(), z.number()]))).min(1),
+});
+
+export type ScenarioKind = 'casual' | 'interview' | 'client' | 'debate' | 'negotiation' | 'roleplay';
 
 /**
  * Values for {{placeholders}} in scenario text. `hidden` keys are used in the AI instructions
@@ -97,6 +107,11 @@ export function rollScenarioState(
         },
         hidden: ['floorPrice', 'floorPriceText'],
       };
+    }
+    case 'roleplay': {
+      const p = RoleplayParams.parse(params);
+      const v = pick(p.variants, rng);
+      return { values: { ...v, opening: renderTemplate(p.opening, v) }, hidden: [...p.hidden, 'opening'] };
     }
     default:
       throw new Error(`Unknown scenario kind: ${kind}`);

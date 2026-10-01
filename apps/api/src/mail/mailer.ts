@@ -54,7 +54,7 @@ function layout(heading: string, body: string, buttonLabel: string, url: string)
 export function verificationEmail(to: string, name: string, url: string): EmailMessage {
   return {
     to,
-    subject: 'Verify your email for SpeakAI',
+    subject: 'Verify your email for Talkel',
     text: `Hi ${name},\n\nConfirm your email to start practising:\n${url}\n\nIf you didn't sign up, ignore this email.`,
     html: layout(`Hi ${escapeHtml(name)} 👋`, 'Confirm your email address to start practising English conversations.', 'Verify email', url),
   };
@@ -63,9 +63,9 @@ export function verificationEmail(to: string, name: string, url: string): EmailM
 export function resetPasswordEmail(to: string, name: string, url: string): EmailMessage {
   return {
     to,
-    subject: 'Reset your SpeakAI password',
+    subject: 'Reset your Talkel password',
     text: `Hi ${name},\n\nReset your password here (valid for 1 hour):\n${url}\n\nIf you didn't ask for this, ignore this email.`,
-    html: layout('Reset your password', 'Someone (hopefully you) asked to reset your SpeakAI password. The link is valid for 1 hour.', 'Choose a new password', url),
+    html: layout('Reset your password', 'Someone (hopefully you) asked to reset your Talkel password. The link is valid for 1 hour.', 'Choose a new password', url),
   };
 }
 

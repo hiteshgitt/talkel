@@ -1,5 +1,5 @@
 /**
- * Database access for SpeakAI (server-side only).
+ * Database access for Talkel (server-side only).
  * Prisma Client is generated into ./generated/prisma by `prisma generate`.
  */
 import { PrismaPg } from '@prisma/adapter-pg';

@@ -27,7 +27,7 @@ export function createAuth({ env, prisma, mailer }: AuthDeps) {
       : {};
 
   return betterAuth({
-    appName: 'SpeakAI',
+    appName: 'Talkel',
     baseURL: env.APP_BASE_URL,
     basePath: AUTH_BASE_PATH,
     secret: env.BETTER_AUTH_SECRET,

@@ -1,4 +1,4 @@
-# SpeakAI — Documentation Index
+# Talkel — Documentation Index
 
 > Working name. The architecture is independent of the brand (PRD §89).
 

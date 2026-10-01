@@ -1,4 +1,4 @@
-# SpeakAI — Product Requirements Document
+# Talkel — Product Requirements Document
 
 > **Source of truth for product intent.** This is the master PRD (v1.0) as supplied by the product owner, preserved verbatim below.
 > Where engineering has refined or deviated from a requirement, the change is recorded in the **Engineering Amendments** table at the top and explained in the linked doc. The PRD text itself is not edited, so the original intent stays auditable.
@@ -2237,7 +2237,7 @@ The goal is to give the user:
 
 Use a temporary internal name:
 
-**SpeakAI**
+**Talkel**
 
 Do not treat this as the final brand name.
 
@@ -2269,3 +2269,29 @@ Web Dashboard (Next.js): Analytics, History, Progress, Admin
 ```
 
 # END OF MASTER PRD
+
+---
+
+# AMENDMENT (2026-10-01): Positioning and Missions
+
+**Name:** Talkel — *Your AI Conversation Partner.*
+
+**Positioning:** competitors are AI English *tutors* (many modes, corrections, avatars). Talkel is an AI **conversation
+simulator**: practise the conversations that matter, with a partner that has its own goals, adapts to your level and
+mistakes, and gives an honest, evidence-based result. We compete on making each conversation feel like a real event with an
+objective and a consequence — not on the number of modes.
+
+**Core loop:** 🎯 Mission → 📞 Conversation → 🧠 Result & analysis → 🔄 Retry harder → 📈 Progress.
+
+**Missions (new tab; Practice stays for open-ended conversations):**
+- A situation, the user's objectives, and an AI character with its own hidden objective (e.g. a manager who may approve at
+  most 12% but opens at 7%).
+- Five pressure levels — Comfortable, Natural, Challenging, Pressure, Real world — separate from English level. Passing a
+  level unlocks the next.
+- Result: SUCCESS / PARTIAL / FAILED with a factual headline, objectives achieved, mission-specific skills (persuasion,
+  assertiveness, empathy, composure, structure, professionalism, politeness) and a mission score (½ communication +
+  ½ objectives). No invented precision (§28): every score has a stated basis.
+
+**Deliberately not pursued now:** pronunciation scoring (needs audio analysis), animated avatars, matching competitors' mode
+count. **Next:** "Try that answer again", three-register rewrites, personal memory (with consent).
+

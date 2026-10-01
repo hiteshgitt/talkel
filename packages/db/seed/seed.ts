@@ -9,7 +9,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { createPrismaClient } from '../dist/index.js';
-import { PERSONAS, SCENARIOS, type ScenarioSeed } from '../dist/content.js';
+import { MISSIONS, PERSONAS, SCENARIOS, type ScenarioSeed } from '../dist/content.js';
 
 if (!process.env.DATABASE_URL && existsSync('.env')) process.loadEnvFile('.env');
 const prisma = createPrismaClient(process.env.DATABASE_URL ?? '');
@@ -27,6 +27,7 @@ function versionContent(s: ScenarioSeed) {
     promptTemplate: s.promptTemplate,
     params: s.params,
     goals: s.goals,
+    mission: s.mission ?? null,
   };
 }
 
@@ -67,7 +68,8 @@ async function main(): Promise<void> {
     console.log(`persona ${slug}${existing ? (changed ? ' (updated, new version)' : '') : ' (created)'}`);
   }
 
-  for (const s of SCENARIOS) {
+  for (const s of [...SCENARIOS, ...MISSIONS]) {
+    const type = s.type ?? 'PRACTICE';
     const category = await prisma.scenarioCategory.upsert({
       where: { slug: s.category.slug },
       create: s.category,
@@ -76,8 +78,8 @@ async function main(): Promise<void> {
 
     const scenario = await prisma.scenario.upsert({
       where: { slug: s.slug },
-      create: { slug: s.slug, categoryId: category.id, sortOrder: s.sortOrder, isActive: true },
-      update: { categoryId: category.id, sortOrder: s.sortOrder },
+      create: { slug: s.slug, type, categoryId: category.id, sortOrder: s.sortOrder, isActive: true },
+      update: { type, categoryId: category.id, sortOrder: s.sortOrder },
       include: { publishedVersion: true },
     });
 
@@ -95,6 +97,7 @@ async function main(): Promise<void> {
       promptTemplate: current.promptTemplate,
       params: current.params,
       goals: current.goals,
+      mission: current.mission ?? null,
     };
     if (current && stored && fingerprint(stored) === fingerprint(content)) {
       console.log(`scenario ${s.slug} v${current.version} unchanged`);
@@ -106,7 +109,7 @@ async function main(): Promise<void> {
     await prisma.$transaction(async (tx) => {
       if (current) await tx.scenarioVersion.update({ where: { id: current.id }, data: { status: 'ARCHIVED' } });
       const created = await tx.scenarioVersion.create({
-        data: { scenarioId: scenario.id, version, status: 'PUBLISHED', publishedAt: new Date(), ...content },
+        data: { scenarioId: scenario.id, version, status: 'PUBLISHED', publishedAt: new Date(), ...content, mission: content.mission ?? undefined },
       });
       await tx.scenario.update({ where: { id: scenario.id }, data: { publishedVersionId: created.id } });
     });

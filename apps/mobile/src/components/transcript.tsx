@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MOMENT_NAME } from '@/components/feedback';
 import { segment } from '@/lib/highlight';
-import { colors, radius } from '@/theme';
+import { makeStyles, radius } from '@/theme';
 
 type Turn = ConversationDetail['turns'][number];
 type MarkKind = 'grammar' | 'phrasing';
@@ -22,6 +22,7 @@ function fixesFor(f: Feedback | null, seq: number) {
  * amber = could sound more natural); tapping the line shows the fixes right under it.
  */
 export function TranscriptLine({ turn, personaName, feedback }: { turn: Turn; personaName: string; feedback: Feedback | null }) {
+  const styles = useStyles();
   const [open, setOpen] = useState(false);
   const isUser = turn.speaker === 'USER';
   const fixes = fixesFor(isUser ? feedback : null, turn.seq);
@@ -84,21 +85,23 @@ export function TranscriptLine({ turn, personaName, feedback }: { turn: Turn; pe
   );
 }
 
-const styles = StyleSheet.create({
-  bubble: { borderRadius: radius.md, padding: 12, maxWidth: '88%' },
-  ai: { backgroundColor: colors.surface, alignSelf: 'flex-start' },
-  user: { backgroundColor: colors.surfaceRaised, alignSelf: 'flex-end' },
-  flagged: { borderWidth: 1, borderColor: colors.border },
-  head: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, marginBottom: 4 },
-  speaker: { color: colors.textMuted, fontSize: 12 },
-  badge: { color: colors.warning, fontSize: 12, fontWeight: '700' },
-  text: { color: colors.text, fontSize: 16, lineHeight: 22 },
-  markGrammar: { color: colors.danger, textDecorationLine: 'underline', textDecorationColor: colors.danger },
-  markPhrasing: { color: colors.warning, textDecorationLine: 'underline', textDecorationColor: colors.warning },
-  cut: { color: colors.textMuted, fontSize: 13 },
-  fixes: { marginTop: 8, paddingTop: 8, gap: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
-  fix: { gap: 2 },
-  fixRight: { color: colors.userSpeaking, fontSize: 15, fontWeight: '600' },
-  fixWhy: { color: colors.textMuted, fontSize: 13, lineHeight: 18 },
-  momentKind: { color: colors.warning, fontSize: 12, fontWeight: '700' },
-});
+const useStyles = makeStyles((c) =>
+  StyleSheet.create({
+    bubble: { borderRadius: radius.lg, padding: 12, paddingHorizontal: 14, maxWidth: '88%' },
+    ai: { backgroundColor: c.surface, alignSelf: 'flex-start', borderTopLeftRadius: 6, ...c.elevation },
+    user: { backgroundColor: c.accentSoft, alignSelf: 'flex-end', borderTopRightRadius: 6 },
+    flagged: { borderWidth: 1, borderColor: c.warning },
+    head: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, marginBottom: 4 },
+    speaker: { color: c.textMuted, fontSize: 12, fontWeight: '700' },
+    badge: { color: c.warning, fontSize: 12, fontWeight: '800' },
+    text: { color: c.text, fontSize: 16, lineHeight: 23 },
+    markGrammar: { color: c.danger, textDecorationLine: 'underline', textDecorationColor: c.danger },
+    markPhrasing: { color: c.warning, textDecorationLine: 'underline', textDecorationColor: c.warning },
+    cut: { color: c.textMuted, fontSize: 13 },
+    fixes: { marginTop: 10, paddingTop: 10, gap: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.border },
+    fix: { gap: 2 },
+    fixRight: { color: c.success, fontSize: 15, fontWeight: '700' },
+    fixWhy: { color: c.textMuted, fontSize: 13, lineHeight: 18 },
+    momentKind: { color: c.warning, fontSize: 12, fontWeight: '800' },
+  }),
+);

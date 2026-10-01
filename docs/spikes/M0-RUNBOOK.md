@@ -43,7 +43,7 @@ cp .env.example .env          # set EXPO_PUBLIC_API_URL and the same POC_DEV_TOK
 npx eas-cli@latest login
 npx eas-cli@latest build --profile development --platform android
 #   install the APK from the link EAS prints, then:
-pnpm start                    # Metro; open the SpeakAI dev app on the phone and connect
+pnpm start                    # Metro; open the Talkel dev app on the phone and connect
 ```
 
 ## Test script (what to try on each call)

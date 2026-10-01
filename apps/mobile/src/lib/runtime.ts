@@ -1,5 +1,6 @@
 import { requireOptionalNativeModule } from 'expo';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
+import { TurboModuleRegistry } from 'react-native';
 
 /**
  * Calls need native WebRTC, which only exists in our own builds (EAS development/production),
@@ -7,7 +8,7 @@ import Constants, { ExecutionEnvironment } from 'expo-constants';
  */
 export function nativeCallingProblem(): string | null {
   if (Constants.executionEnvironment === ExecutionEnvironment.StoreClient) {
-    return 'Calls need the SpeakAI development build. Expo Go does not include the audio calling module.';
+    return 'Calls need the Talkel development build. Expo Go does not include the audio calling module.';
   }
   return null;
 }
@@ -16,3 +17,7 @@ export function nativeCallingProblem(): string | null {
 export function audioPlaybackAvailable(): boolean {
   return requireOptionalNativeModule('ExpoAudio') !== null;
 }
+
+/** Gradients, vector graphics and haptics arrived in a later app build; older builds fall back to plain views. */
+export const gradientsAvailable = requireOptionalNativeModule('ExpoLinearGradient') !== null;
+export const svgAvailable = TurboModuleRegistry.get('RNSVGSvgViewModule') != null;

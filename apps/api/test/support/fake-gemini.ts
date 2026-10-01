@@ -3,6 +3,17 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { type WebSocket, WebSocketServer } from 'ws';
 
+/** The fake's mission verdict, returned when the evaluation prompt has a MISSION section. */
+export const FAKE_MISSION = {
+  result: 'SUCCESS',
+  headline: 'Bought for ₹1,450 (asked ₹2,500)',
+  reason: 'You bargained politely and stayed on budget.',
+  skills: [
+    { key: 'persuasion', band: 4, rationale: 'Gave a reason.' },
+    { key: 'empathy', band: 5, rationale: 'Not a skill of this mission — must be dropped.' },
+  ],
+};
+
 /** What the fake evaluation model "says". Two corrections are invalid on purpose (grounding must drop them). */
 export const FAKE_EVALUATION = {
   summary: 'Good start.',
@@ -32,6 +43,7 @@ export const FAKE_EVALUATION = {
   ],
   translationPatterns: [],
   goalsAchieved: ['made_counter_offer', 'not_a_real_goal'],
+  mission: null as null | Record<string, unknown>,
   recommendations: [{ type: 'SCENARIO', scenarioSlug: 'debate', title: 'Try a debate', reason: 'r' }],
 };
 
@@ -68,8 +80,9 @@ export async function startFakeGemini(): Promise<FakeGemini> {
     req.on('data', (c: Buffer) => (body += c.toString()));
     req.on('end', () => {
       evaluations.push(body);
+      const evaluation = { ...FAKE_EVALUATION, mission: body.includes('MISSION (level') ? FAKE_MISSION : null };
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(FAKE_EVALUATION) }] } }], usageMetadata: { promptTokenCount: 900, candidatesTokenCount: 300 } }));
+      res.end(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(evaluation) }] } }], usageMetadata: { promptTokenCount: 900, candidatesTokenCount: 300 } }));
     });
   });
   const wss = new WebSocketServer({ server });

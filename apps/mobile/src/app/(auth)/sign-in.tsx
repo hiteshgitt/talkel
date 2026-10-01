@@ -3,12 +3,14 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { BrandLockup } from '@/components/art';
 import { Body, Button, Card, ErrorText, Field, Screen, Title } from '@/components/ui';
 import { authClient, VERIFIED_CALLBACK_URL } from '@/lib/auth-client';
 import { API_URL, configProblem } from '@/lib/config';
-import { colors } from '@/theme';
+import { makeStyles } from '@/theme';
 
 export default function SignInScreen() {
+  const styles = useStyles();
   const { verified } = useLocalSearchParams<{ verified?: string }>();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -51,9 +53,10 @@ export default function SignInScreen() {
   return (
     <Screen>
       <View style={styles.hero}>
-        <Text style={styles.brand}>SpeakAI</Text>
+        <BrandLockup />
+        <View style={styles.spacer} />
         <Title>Welcome back</Title>
-        <Body muted>Practise real conversations in English, every day.</Body>
+        <Text style={styles.lead}>Practise real conversations in English, every day.</Text>
       </View>
 
       {notice ? (
@@ -62,13 +65,13 @@ export default function SignInScreen() {
         </Card>
       ) : null}
 
-      <Field label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" autoComplete="email" keyboardType="email-address" textContentType="emailAddress" />
-      <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry autoComplete="current-password" textContentType="password" onSubmitEditing={() => void signIn()} />
+      <Field label="Email" icon="mail-outline" value={email} onChangeText={setEmail} autoCapitalize="none" autoComplete="email" keyboardType="email-address" textContentType="emailAddress" />
+      <Field label="Password" icon="lock-closed-outline" value={password} onChangeText={setPassword} secureTextEntry autoComplete="current-password" textContentType="password" onSubmitEditing={() => void signIn()} />
       <ErrorText>{error}</ErrorText>
       {notVerified ? <Button label="Resend verification email" variant="secondary" onPress={() => void resendVerification()} loading={busy} /> : null}
 
-      <Button label="Sign in" onPress={() => void signIn()} loading={busy} disabled={!email || !password || Boolean(configProblem())} />
-      {authConfig.data?.google ? <Button label="Continue with Google" variant="secondary" onPress={() => void google()} /> : null}
+      <Button label="Sign in" icon="log-in-outline" onPress={() => void signIn()} loading={busy} disabled={!email || !password || Boolean(configProblem())} />
+      {authConfig.data?.google ? <Button label="Continue with Google" icon="logo-google" variant="secondary" onPress={() => void google()} /> : null}
 
       <Link href="/sign-up" style={styles.link}>
         New here? Create an account
@@ -80,9 +83,12 @@ export default function SignInScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  hero: { gap: 8, marginTop: 24, marginBottom: 8 },
-  brand: { color: colors.accent, fontSize: 15, fontWeight: '700', letterSpacing: 1 },
-  link: { color: colors.accent, fontSize: 16, textAlign: 'center', paddingVertical: 8 },
-  linkMuted: { color: colors.textMuted, fontSize: 15, textAlign: 'center' },
-});
+const useStyles = makeStyles((c) =>
+  StyleSheet.create({
+    hero: { gap: 8, marginTop: 28, marginBottom: 12, alignItems: 'center' },
+    spacer: { height: 10 },
+    lead: { color: c.textMuted, fontSize: 16, lineHeight: 23, textAlign: 'center' },
+    link: { color: c.accent, fontSize: 16, fontWeight: '700', textAlign: 'center', paddingVertical: 8 },
+    linkMuted: { color: c.textMuted, fontSize: 15, textAlign: 'center' },
+  }),
+);

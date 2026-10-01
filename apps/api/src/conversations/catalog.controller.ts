@@ -4,7 +4,7 @@ import type { PrismaClient } from '@speakai/db';
 import { AllowDevToken } from '../auth/auth.decorators.js';
 import { PRISMA } from '../db/prisma.module.js';
 
-/** Active scenarios (latest published version) and personas. Never includes prompts or hidden params. */
+/** Active practice scenarios (latest published version) and personas — missions have their own endpoint. Never includes prompts or hidden params. */
 @Controller('catalog')
 @AllowDevToken()
 export class CatalogController {
@@ -14,7 +14,7 @@ export class CatalogController {
   async catalog(): Promise<Catalog> {
     const [scenarios, personas] = await Promise.all([
       this.prisma.scenario.findMany({
-        where: { isActive: true, publishedVersionId: { not: null } },
+        where: { type: 'PRACTICE', isActive: true, publishedVersionId: { not: null } },
         orderBy: { sortOrder: 'asc' },
         include: { category: true, publishedVersion: true },
       }),

@@ -41,7 +41,7 @@ export default async function DashboardPage() {
           <Card className="border border-accent/40">
             <h2 className="font-semibold">Finish setting up in the app</h2>
             <p className="mt-1 text-sm text-muted">
-              Open the SpeakAI Android app and sign in to choose your level, goals and feedback language. Conversations happen in the app.
+              Open the Talkel Android app and sign in to choose your level, goals and feedback language. Conversations happen in the app.
             </p>
           </Card>
         ) : null}

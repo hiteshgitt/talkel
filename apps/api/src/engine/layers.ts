@@ -12,6 +12,7 @@ export const LAYER_VERSIONS = {
   learner: 'learner-v2',
   tools: 'tools-v2',
   accent: 'accent-v1',
+  pressure: 'pressure-v1',
 } as const;
 
 export const CORE = `
@@ -109,6 +110,30 @@ export function learnerLayer(goals: readonly LearningGoal[], weakSpots: readonly
     'Never mention that you are doing this, and never correct them for it.'
   );
 }
+
+/**
+ * Missions: how hard the AI makes it, independent of the learner's English level (which sets
+ * vocabulary and speed). Level names are shared with the app (MISSION_LEVELS in contracts).
+ */
+export const PRESSURE: Record<1 | 2 | 3 | 4 | 5, string> = {
+  1: `
+Mission difficulty 1 of 5 (Comfortable). Pursue your objective, but be patient and cooperative: give the user time, accept
+reasonable answers, and concede once they make a fair point.`.trim(),
+  2: `
+Mission difficulty 2 of 5 (Natural). Behave like a typical real person in your role: realistic but fair. Ask a follow-up when
+something is unclear, and concede after a reasonable argument.`.trim(),
+  3: `
+Mission difficulty 3 of 5 (Challenging). Be demanding: probe vague answers with specific follow-ups ("What exactly did you
+do?"), push back once before conceding, and only give ground for good arguments or evidence.`.trim(),
+  4: `
+Mission difficulty 4 of 5 (Pressure). Be sceptical and a little impatient, and keep a brisk pace. If the user rambles, cut in
+politely when they pause ("Sorry — so what’s your point?"). Push back at least twice before conceding anything, and question
+their evidence.`.trim(),
+  5: `
+Mission difficulty 5 of 5 (Real world). Behave like a tough, unpredictable real person: change direction suddenly, sometimes
+misunderstand so they must clarify, raise a new objection late, use idioms, and concede only to strong, specific, well-argued
+points. Stay realistic and never abusive.`.trim(),
+};
 
 /**
  * Accent is a best-effort voice hint (voices have a fixed timbre), plus matching vocabulary.

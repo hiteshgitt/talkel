@@ -5,7 +5,7 @@ import './globals.css';
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'SpeakAI',
+  title: 'Talkel — Your AI Conversation Partner',
   description: 'Practise real English conversations with AI, then get friendly feedback.',
 };
 

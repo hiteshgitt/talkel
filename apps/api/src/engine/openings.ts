@@ -38,5 +38,7 @@ export function openingCue(
       return `${common}Greet the user, state the motion ("${values.motion}"), say that they argue ${values.userSide} it and you argue ${values.aiSide} it, then invite them to give their opening argument first.${end}`;
     case 'negotiation':
       return `${common}The customer has just stopped at your stall and is looking at ${values.item}. Greet them like a shopkeeper and say something appealing about it.${end}`;
+    case 'roleplay':
+      return `${common}${values.opening}${end}`;
   }
 }

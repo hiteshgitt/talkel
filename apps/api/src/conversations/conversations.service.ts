@@ -43,6 +43,7 @@ import { AnalysisQueue } from '../analysis/analysis-queue.js';
 import { LearningProfileService } from '../analysis/learning-profile.service.js';
 import { QuotaService } from './quota.service.js';
 import { entitlementsFor } from '../users/users.service.js';
+import { MissionSpec, objectivesOf } from '../missions/mission-rules.js';
 
 const MIN_REMAINING_TO_START_SEC = 30;
 const CONNECT_WINDOW_MS = 5 * 60_000; // time to read the brief before starting
@@ -53,7 +54,7 @@ const StoredState = z.object({
   values: z.record(z.string(), z.union([z.string(), z.number()])),
   hidden: z.array(z.string()),
 });
-const StoredGoals = z.array(z.object({ id: z.string(), description: z.string() }));
+const StoredGoals = z.array(z.object({ id: z.string(), description: z.string(), label: z.string().optional() }));
 const PersonaVoices = z.object({ gemini: z.string(), openai: z.string().optional() });
 
 interface Pending {
@@ -93,12 +94,21 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
     const [scenario, personas, user] = await Promise.all([
       this.prisma.scenario.findFirst({
         where: { id: req.scenarioId, isActive: true, publishedVersionId: { not: null } },
-        include: { publishedVersion: true },
+        include: { publishedVersion: true, missionProgress: { where: { userId } } },
       }),
       this.prisma.persona.findMany({ where: { isActive: true }, orderBy: { sortOrder: 'asc' } }),
       this.prisma.user.findUniqueOrThrow({ where: { id: userId }, include: { profile: true, settings: true } }),
     ]);
     if (!scenario?.publishedVersion) throw problem(HttpStatus.NOT_FOUND, 'SCENARIO_NOT_FOUND', 'Scenario not found');
+
+    // Missions: play an unlocked pressure level (default: the highest unlocked).
+    const isMission = scenario.type === 'MISSION';
+    const spec = isMission ? MissionSpec.parse(scenario.publishedVersion.mission) : null;
+    const unlocked = scenario.missionProgress[0]?.unlockedLevel ?? 1;
+    const missionLevel = isMission ? (req.missionLevel ?? unlocked) : null;
+    if (missionLevel !== null && missionLevel > unlocked) {
+      throw problem(HttpStatus.FORBIDDEN, 'MISSION_LEVEL_LOCKED', `Pass level ${missionLevel - 1} to unlock level ${missionLevel}`);
+    }
 
     // Free plan: partner and accent are random. Pro: the user may choose (server-enforced).
     const { choosePartner, chooseAccent } = entitlementsFor(user.plan);
@@ -137,6 +147,7 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
       accent,
       liveCorrection,
       learnerGoals,
+      missionLevel,
       learnerWeakSpots: await this.profiles.weakSpots(userId),
       timeZone: user.profile?.timezone ?? 'Asia/Kolkata',
       recentSituations: version.kind === 'casual' ? await this.recentSituations(userId) : [],
@@ -155,6 +166,7 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
         model: this.env.GEMINI_LIVE_MODEL,
         promptVersions: prepared.promptVersions,
         instructionsHash: prepared.instructionsHash,
+        missionLevel,
         scenarioState: { values: prepared.scenarioState, hidden: [...prepared.hiddenKeys] },
       },
     });
@@ -167,6 +179,7 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
 
     return {
       id: session.id,
+      scenarioSlug: scenario.slug,
       brief: prepared.brief,
       persona: {
         id: persona.id,
@@ -178,6 +191,10 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
       accent,
       difficulty,
       durationSec,
+      mission:
+        spec && missionLevel !== null
+          ? { level: missionLevel, objectives: objectivesOf(version.goals).map((o) => o.text), aiCharacter: spec.aiCharacter }
+          : null,
     };
   }
 
@@ -354,13 +371,19 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      include: { scenarioVersion: { select: { title: true } }, persona: { select: { name: true } }, _count: { select: { turns: true } } },
+      include: {
+        scenarioVersion: { select: { title: true, scenario: { select: { slug: true } } } },
+        persona: { select: { name: true } },
+        analysis: { select: { overallScore: true } },
+        _count: { select: { turns: true } },
+      },
     });
     const page = rows.slice(0, limit);
     return {
       items: page.map((s) => ({
         id: s.id,
         scenarioTitle: s.scenarioVersion.title,
+        scenarioSlug: s.scenarioVersion.scenario.slug,
         personaName: s.persona.name,
         difficulty: EnglishLevel.parse(s.difficulty),
         status: SessionStatusSchema.parse(s.status),
@@ -368,6 +391,8 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
         createdAt: s.createdAt.toISOString(),
         durationMs: s.durationMs,
         turnCount: s._count.turns,
+        overallScore: s.analysis?.overallScore ?? null,
+        missionLevel: s.missionLevel,
       })),
       nextCursor: rows.length > limit ? page.at(-1)!.id : null,
     };
@@ -378,7 +403,7 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
     const s = await this.prisma.conversationSession.findFirst({
       where: { id, userId },
       include: {
-        scenarioVersion: true,
+        scenarioVersion: { include: { scenario: { select: { slug: true } } } },
         persona: { select: { name: true } },
         turns: { orderBy: { seq: 'asc' } },
         analysis: { include: { grammarErrors: { orderBy: { turnSeq: 'asc' } }, vocabularyItems: true, fluency: true, recommendations: true } },
@@ -397,6 +422,7 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
     return {
       id: s.id,
       scenarioTitle: s.scenarioVersion.title,
+      scenarioSlug: s.scenarioVersion.scenario.slug,
       personaName: s.persona.name,
       difficulty: EnglishLevel.parse(s.difficulty),
       status: SessionStatusSchema.parse(s.status),
@@ -404,6 +430,9 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
       createdAt: s.createdAt.toISOString(),
       durationMs: live?.durationMs ?? s.durationMs,
       turnCount: turns.length,
+      overallScore: s.analysis?.overallScore ?? null,
+      missionLevel: s.missionLevel,
+      missionId: s.missionLevel !== null ? s.scenarioVersion.scenarioId : null,
       accent: Accent.catch('INDIAN').parse(s.accent),
       analysisStatus: AnalysisStatusSchema.parse(s.analysisStatus),
       feedback: s.analysis ? toFeedback(s.analysis) : null,
@@ -418,7 +447,8 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
         userRole: render(s.scenarioVersion.userRole),
         objective: render(s.scenarioVersion.objective),
       },
-      goals: StoredGoals.parse(s.scenarioVersion.goals).map((g) => ({ ...g, achieved: achieved.has(g.id) })),
+      // Missions show the user-facing objective wording.
+      goals: StoredGoals.parse(s.scenarioVersion.goals).map((g) => ({ id: g.id, description: g.label ?? g.description, achieved: achieved.has(g.id) })),
       turns,
     };
   }
@@ -641,6 +671,7 @@ function toFeedback(a: AnalysisRow): Feedback {
     translationPatterns: a.translationPatterns,
     // Older analyses (eval-v1) have none; tolerate anything malformed rather than failing the page.
     phrasing: Feedback.shape.phrasing.catch([]).parse(a.phrasing),
+    mission: Feedback.shape.mission.catch(null).parse(a.missionResult ?? null),
     conversationMoments: Feedback.shape.conversationMoments.catch([]).parse(a.conversationMoments),
     recommendations: a.recommendations.map((r) => ({ type: r.type, scenarioSlug: r.scenarioSlug, title: r.title, reason: r.reason })),
     feedbackLanguage: FeedbackLanguage.catch('en').parse(a.feedbackLanguage),

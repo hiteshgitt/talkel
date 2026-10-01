@@ -1,13 +1,15 @@
 import { Link, router } from 'expo-router';
 import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
-import { Body, Button, ErrorText, Field, Screen, Title } from '@/components/ui';
+import { StyleSheet, Text, View } from 'react-native';
+import { BrandMark } from '@/components/art';
+import { Button, ErrorText, Field, Screen, Title } from '@/components/ui';
 import { authClient, VERIFIED_CALLBACK_URL } from '@/lib/auth-client';
-import { colors } from '@/theme';
+import { makeStyles } from '@/theme';
 
 const MIN_PASSWORD = 8;
 
 export default function SignUpScreen() {
+  const styles = useStyles();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -36,16 +38,18 @@ export default function SignUpScreen() {
   return (
     <Screen>
       <View style={styles.hero}>
+        <BrandMark size={52} />
         <Title>Create your account</Title>
-        <Body muted>Talk with AI characters in real-life situations, then get friendly feedback.</Body>
+        <Text style={styles.lead}>Talk with AI characters in real-life situations, then get friendly feedback.</Text>
       </View>
-      <Field label="Your name" value={name} onChangeText={setName} autoComplete="name" textContentType="name" />
-      <Field label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" autoComplete="email" keyboardType="email-address" textContentType="emailAddress" />
-      <Field label={`Password (at least ${MIN_PASSWORD} characters)`} value={password} onChangeText={setPassword} secureTextEntry autoComplete="new-password" textContentType="newPassword" />
+      <Field label="Your name" icon="person-outline" value={name} onChangeText={setName} autoComplete="name" textContentType="name" />
+      <Field label="Email" icon="mail-outline" value={email} onChangeText={setEmail} autoCapitalize="none" autoComplete="email" keyboardType="email-address" textContentType="emailAddress" />
+      <Field label={`Password (at least ${MIN_PASSWORD} characters)`} icon="lock-closed-outline" value={password} onChangeText={setPassword} secureTextEntry autoComplete="new-password" textContentType="newPassword" />
       {tooShort ? <ErrorText>Password is too short.</ErrorText> : null}
       <ErrorText>{error}</ErrorText>
       <Button
         label="Create account"
+        icon="person-add-outline"
         onPress={() => void signUp()}
         loading={busy}
         disabled={!name.trim() || !email.trim() || password.length < MIN_PASSWORD}
@@ -57,7 +61,10 @@ export default function SignUpScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  hero: { gap: 8, marginTop: 24, marginBottom: 8 },
-  link: { color: colors.accent, fontSize: 16, textAlign: 'center', paddingVertical: 8 },
-});
+const useStyles = makeStyles((c) =>
+  StyleSheet.create({
+    hero: { gap: 8, marginTop: 20, marginBottom: 8, alignItems: 'center' },
+    lead: { color: c.textMuted, fontSize: 16, lineHeight: 23, textAlign: 'center' },
+    link: { color: c.accent, fontSize: 16, fontWeight: '700', textAlign: 'center', paddingVertical: 8 },
+  }),
+);

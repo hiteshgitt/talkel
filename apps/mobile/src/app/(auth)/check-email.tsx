@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Body, Button, Card, ErrorText, Screen, Title } from '@/components/ui';
+import { Body, Button, Card, EmptyState, ErrorText, Screen } from '@/components/ui';
 import { authClient, VERIFIED_CALLBACK_URL } from '@/lib/auth-client';
 
 export default function CheckEmailScreen() {
@@ -20,17 +20,17 @@ export default function CheckEmailScreen() {
 
   return (
     <Screen style={{ marginTop: 32 }}>
-      <Title>Check your email</Title>
-      <Body>
-        We sent a verification link to <Body>{email}</Body>. Open it on this phone and you’ll come straight back
-        here to sign in.
-      </Body>
+      <EmptyState
+        icon="mail-unread-outline"
+        title="Check your email"
+        body={`We sent a verification link to ${email}. Open it on this phone and you’ll come straight back here to sign in.`}
+      />
       <Card>
         <Body muted>Can’t find it? Check your spam folder, or send it again.</Body>
       </Card>
       {message ? <Body muted>{message}</Body> : null}
       <ErrorText>{error}</ErrorText>
-      <Button label="Send the link again" variant="secondary" onPress={() => void resend()} loading={busy} disabled={!email} />
+      <Button label="Send the link again" icon="refresh" variant="secondary" onPress={() => void resend()} loading={busy} disabled={!email} />
       <Button label="I’ve verified — sign in" onPress={() => router.replace('/sign-in')} />
     </Screen>
   );

@@ -1,14 +1,20 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Body, Button, ErrorText, Loading, Screen, Title } from '@/components/ui';
+import { useState } from 'react';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScenarioArt } from '@/components/art';
 import { LEVEL_LABEL } from '@/components/pickers';
+import { Badge, Button, Card, Choice, ErrorText, Loading, Screen, Title } from '@/components/ui';
 import { friendlyError } from '@/lib/api';
 import { formatMinutes, useCatalog, useQuota } from '@/lib/queries';
-import { colors, radius } from '@/theme';
+import { makeStyles, useColors } from '@/theme';
 
 export default function PracticeScreen() {
+  const s = useStyles();
+  const c = useColors();
   const catalog = useCatalog();
   const quota = useQuota();
+  const [category, setCategory] = useState<string | null>(null);
 
   if (catalog.isPending) return <Loading />;
   if (catalog.isError) {
@@ -16,47 +22,69 @@ export default function PracticeScreen() {
       <Screen>
         <Title>Practice</Title>
         <ErrorText>{friendlyError(catalog.error)}</ErrorText>
-        <Button label="Try again" onPress={() => void catalog.refetch()} />
+        <Button label="Try again" icon="refresh" onPress={() => void catalog.refetch()} />
       </Screen>
     );
   }
 
-  return (
-    <Screen>
-      <Title>Practice</Title>
-      {quota.data ? (
-        <Body muted>
-          {quota.data.remainingSec > 0 ? `${formatMinutes(quota.data.remainingSec)} of free practice left today` : 'You’ve used today’s free practice time. It resets at midnight.'}
-        </Body>
-      ) : null}
+  // Categories in catalog order (scenarios arrive sorted by category).
+  const categories = [...new Map(catalog.data.scenarios.map((x) => [x.category.slug, x.category] as const)).values()];
+  const shown = catalog.data.scenarios.filter((x) => !category || x.category.slug === category);
 
-      {catalog.data.scenarios.map((s) => (
-        <Pressable
-          key={s.id}
-          accessibilityRole="button"
-          onPress={() => router.push({ pathname: '/scenario/[id]', params: { id: s.id } })}
-          style={({ pressed }) => [styles.card, pressed && styles.pressed]}
-        >
-          <View style={styles.cardHeader}>
-            <Text style={styles.category}>{s.category.name}</Text>
-            <Text style={styles.meta}>
-              ~{s.estimatedMinutes} min · from {LEVEL_LABEL[s.minLevel]}
+  return (
+    <Screen edges={['top']}>
+      <View style={s.header}>
+        <Title>Practice</Title>
+        {quota.data ? (
+          <View style={s.quota}>
+            <Ionicons name="time-outline" size={16} color={quota.data.remainingSec > 0 ? c.success : c.textMuted} />
+            <Text style={s.quotaText}>
+              {quota.data.remainingSec > 0 ? `${formatMinutes(quota.data.remainingSec)} of free practice left today` : 'Today’s free time is used up. It resets at midnight.'}
             </Text>
           </View>
-          <Text style={styles.title}>{s.title}</Text>
-          <Text style={styles.tagline}>{s.tagline}</Text>
-        </Pressable>
+        ) : null}
+      </View>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipsWrap} contentContainerStyle={s.chips}>
+        <Choice compact label="All" selected={category === null} onPress={() => setCategory(null)} />
+        {categories.map((cat) => (
+          <Choice key={cat.slug} compact label={cat.name} selected={category === cat.slug} onPress={() => setCategory(cat.slug)} />
+        ))}
+      </ScrollView>
+
+      {shown.map((x) => (
+        <Card key={x.id} onPress={() => router.push({ pathname: '/scenario/[id]', params: { id: x.id } })} accessibilityLabel={x.title}>
+          <View style={s.cardRow}>
+            <ScenarioArt slug={x.slug} size={60} />
+            <View style={s.cardText}>
+              <Text style={s.title}>{x.title}</Text>
+              <Text style={s.tagline} numberOfLines={2}>
+                {x.tagline}
+              </Text>
+            </View>
+          </View>
+          <View style={s.meta}>
+            <Badge label={x.category.name} tone="accent" />
+            <Badge label={`~${x.estimatedMinutes} min`} icon="time-outline" />
+            <Badge label={`from ${LEVEL_LABEL[x.minLevel]}`} icon="bar-chart-outline" />
+          </View>
+        </Card>
       ))}
     </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  card: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: 18, gap: 6 },
-  pressed: { opacity: 0.7 },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between' },
-  category: { color: colors.accent, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 },
-  meta: { color: colors.textMuted, fontSize: 12 },
-  title: { color: colors.text, fontSize: 20, fontWeight: '700' },
-  tagline: { color: colors.textMuted, fontSize: 15, lineHeight: 21 },
-});
+const useStyles = makeStyles((c) =>
+  StyleSheet.create({
+    header: { gap: 6 },
+    quota: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    quotaText: { color: c.textMuted, fontSize: 14, flexShrink: 1 },
+    chipsWrap: { marginHorizontal: -20 },
+    chips: { paddingHorizontal: 20, gap: 8 },
+    cardRow: { flexDirection: 'row', gap: 14, alignItems: 'center' },
+    cardText: { flex: 1, gap: 4 },
+    title: { color: c.text, fontSize: 18, fontWeight: '800', letterSpacing: -0.2 },
+    tagline: { color: c.textMuted, fontSize: 14, lineHeight: 20 },
+    meta: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 },
+  }),
+);

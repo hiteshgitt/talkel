@@ -1,9 +1,10 @@
 import type { Trend } from '@speakai/contracts';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors } from '@/theme';
+import { makeStyles, useColors } from '@/theme';
 
 /** Small bar chart of 0–100 values, oldest first. Plain views: no chart library needed. */
 export function MiniBars({ values, height = 56, onPress }: { values: readonly (number | null)[]; height?: number; onPress?: (index: number) => void }) {
+  const styles = useStyles();
   return (
     <View style={[styles.bars, { height }]}>
       {values.map((v, i) => {
@@ -26,6 +27,8 @@ export function MiniBars({ values, height = 56, onPress }: { values: readonly (n
 
 /** 4 weeks of practice, one square per day, today last; brighter = more minutes. */
 export function PracticeCalendar({ days }: { days: readonly { date: string; seconds: number }[] }) {
+  const styles = useStyles();
+  const colors = useColors();
   const weeks: (typeof days)[] = [];
   for (let i = 0; i < days.length; i += 7) weeks.push(days.slice(i, i + 7));
   return (
@@ -39,7 +42,7 @@ export function PracticeCalendar({ days }: { days: readonly { date: string; seco
               <View
                 key={d.date}
                 accessibilityLabel={`${d.date}: ${Math.round(minutes)} minutes`}
-                style={[styles.day, level > 0 ? { backgroundColor: colors.userSpeaking, opacity: level } : null]}
+                style={[styles.day, level > 0 ? { backgroundColor: colors.success, opacity: level } : null]}
               />
             );
           })}
@@ -53,27 +56,27 @@ export function PracticeCalendar({ days }: { days: readonly { date: string; seco
   );
 }
 
-const TREND: Record<Trend, { text: string; color: string }> = {
-  BETTER: { text: '↑ better', color: colors.userSpeaking },
-  WORSE: { text: '↓ needs work', color: colors.danger },
-  STEADY: { text: '→ steady', color: colors.textMuted },
-};
+const TREND_TEXT: Record<Trend, string> = { BETTER: '↑ better', WORSE: '↓ needs work', STEADY: '→ steady' };
 
 /** "better / needs work / steady" chip; the labels can be overridden (e.g. "fewer" for mistakes). */
 export function TrendBadge({ trend, labels }: { trend: Trend | null; labels?: Partial<Record<Trend, string>> }) {
+  const styles = useStyles();
+  const colors = useColors();
   if (!trend) return null;
-  const t = TREND[trend];
-  return <Text style={[styles.trend, { color: t.color }]}>{labels?.[trend] ?? t.text}</Text>;
+  const color = trend === 'BETTER' ? colors.success : trend === 'WORSE' ? colors.danger : colors.textMuted;
+  return <Text style={[styles.trend, { color }]}>{labels?.[trend] ?? TREND_TEXT[trend]}</Text>;
 }
 
-const styles = StyleSheet.create({
-  bars: { flexDirection: 'row', alignItems: 'flex-end', gap: 3 },
-  barSlot: { flex: 1, height: '100%', justifyContent: 'flex-end' },
-  barFill: { backgroundColor: colors.accent, borderRadius: 3 },
-  calendar: { gap: 5 },
-  week: { flexDirection: 'row', gap: 5 },
-  day: { flex: 1, aspectRatio: 1, borderRadius: 4, backgroundColor: colors.surfaceRaised },
-  calendarLegend: { flexDirection: 'row', justifyContent: 'space-between' },
-  legend: { color: colors.textMuted, fontSize: 12 },
-  trend: { fontSize: 13, fontWeight: '700' },
-});
+const useStyles = makeStyles((c) =>
+  StyleSheet.create({
+    bars: { flexDirection: 'row', alignItems: 'flex-end', gap: 3 },
+    barSlot: { flex: 1, height: '100%', justifyContent: 'flex-end' },
+    barFill: { backgroundColor: c.accent, borderRadius: 3 },
+    calendar: { gap: 5 },
+    week: { flexDirection: 'row', gap: 5 },
+    day: { flex: 1, aspectRatio: 1, borderRadius: 5, backgroundColor: c.surfaceRaised },
+    calendarLegend: { flexDirection: 'row', justifyContent: 'space-between' },
+    legend: { color: c.textMuted, fontSize: 12 },
+    trend: { fontSize: 13, fontWeight: '700' },
+  }),
+);

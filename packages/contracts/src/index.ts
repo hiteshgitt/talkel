@@ -168,6 +168,64 @@ export type PersonaSummary = z.infer<typeof PersonaSummary>;
 export const Catalog = z.object({ scenarios: z.array(ScenarioSummary), personas: z.array(PersonaSummary) });
 export type Catalog = z.infer<typeof Catalog>;
 
+// ───────────── Missions (M4) ─────────────
+
+/** Pressure levels, independent of English level. Passing level N unlocks N+1. */
+export const MISSION_LEVELS = [
+  { level: 1, name: 'Comfortable' },
+  { level: 2, name: 'Natural' },
+  { level: 3, name: 'Challenging' },
+  { level: 4, name: 'Pressure' },
+  { level: 5, name: 'Real world' },
+] as const;
+export const MissionLevel = z.number().int().min(1).max(5);
+
+export const MissionSkill = z.enum(['persuasion', 'assertiveness', 'professionalism', 'empathy', 'structure', 'composure', 'politeness']);
+export type MissionSkill = z.infer<typeof MissionSkill>;
+export const MissionGroup = z.enum(['career', 'everyday', 'challenge']);
+export type MissionGroup = z.infer<typeof MissionGroup>;
+
+export const MissionSummary = z.object({
+  id: z.string(),
+  slug: z.string(),
+  group: MissionGroup,
+  title: z.string(),
+  tagline: z.string(),
+  minLevel: EnglishLevel,
+  estimatedMinutes: z.number().int(),
+  aiCharacter: z.string(),
+  /** What the user must achieve (user-facing wording). */
+  objectives: z.array(z.string()),
+  skills: z.array(MissionSkill),
+  progress: z.object({
+    unlockedLevel: MissionLevel,
+    passedLevels: z.array(MissionLevel),
+    /** Best mission score per level, e.g. { "1": 85 } */
+    bestScores: z.record(z.string(), z.number().int()),
+    attempts: z.number().int(),
+  }),
+});
+export type MissionSummary = z.infer<typeof MissionSummary>;
+
+export const MissionList = z.object({ missions: z.array(MissionSummary) });
+export type MissionList = z.infer<typeof MissionList>;
+
+/** The mission part of a conversation's feedback. */
+export const MissionResult = z.object({
+  level: MissionLevel,
+  result: z.enum(['SUCCESS', 'PARTIAL', 'FAILED']),
+  /** One line, e.g. "Raise agreed at 10% (first offer 7%)". */
+  headline: z.string(),
+  reason: z.string(),
+  objectivesAchieved: z.number().int(),
+  objectivesTotal: z.number().int(),
+  /** 0–100 in steps of 5: half communication (overall score), half objectives achieved. */
+  missionScore: z.number().int(),
+  passed: z.boolean(),
+  skills: z.array(z.object({ key: MissionSkill, band: z.number().int(), score: z.number().int(), rationale: z.string() })),
+});
+export type MissionResult = z.infer<typeof MissionResult>;
+
 // ───────────── Conversations (M2) ─────────────
 
 export const DURATION_OPTIONS_SEC = [180, 300, 600] as const;
@@ -191,6 +249,8 @@ export const CreateConversationRequest = z.object({
   difficulty: EnglishLevel.optional(),
   durationSec: z.number().int().min(60).max(1800).optional(),
   liveCorrection: z.boolean().optional(),
+  /** Missions only: the pressure level to play (must be unlocked; defaults to the highest unlocked). */
+  missionLevel: MissionLevel.optional(),
 });
 export type CreateConversationRequest = z.infer<typeof CreateConversationRequest>;
 
@@ -220,12 +280,14 @@ export type EndReason = z.infer<typeof EndReason>;
 
 export const CreateConversationResponse = z.object({
   id: z.string(),
+  scenarioSlug: z.string(),
   brief: ConversationBrief,
   persona: PersonaSummary,
   accent: Accent,
   difficulty: EnglishLevel,
   /** Planned length, already capped by the remaining daily allowance. */
   durationSec: z.number().int(),
+  mission: z.object({ level: MissionLevel, objectives: z.array(z.string()), aiCharacter: z.string() }).nullable(),
 });
 export type CreateConversationResponse = z.infer<typeof CreateConversationResponse>;
 
@@ -242,6 +304,7 @@ export type ConnectResponse = z.infer<typeof ConnectResponse>;
 export const ConversationSummary = z.object({
   id: z.string(),
   scenarioTitle: z.string(),
+  scenarioSlug: z.string(),
   personaName: z.string(),
   difficulty: EnglishLevel,
   status: SessionStatus,
@@ -249,6 +312,10 @@ export const ConversationSummary = z.object({
   createdAt: z.string(),
   durationMs: z.number().int().nullable(),
   turnCount: z.number().int(),
+  /** From the after-call feedback; null until (or unless) it is ready. */
+  overallScore: z.number().int().nullable(),
+  /** Missions: the level played; null for practice. */
+  missionLevel: MissionLevel.nullable(),
 });
 export type ConversationSummary = z.infer<typeof ConversationSummary>;
 
@@ -364,6 +431,8 @@ export const Feedback = z.object({
     z.object({ turnSeq: z.number().int(), kind: MomentKind, youSaid: z.string(), better: z.string(), why: z.string() }),
   ),
   recommendations: z.array(z.object({ type: z.string(), scenarioSlug: z.string().nullable(), title: z.string(), reason: z.string() })),
+  /** Missions only. */
+  mission: MissionResult.nullable(),
   feedbackLanguage: FeedbackLanguage,
 });
 export type Feedback = z.infer<typeof Feedback>;
@@ -447,6 +516,8 @@ export const ConversationDetail = ConversationSummary.extend({
   recording: RecordingInfo.nullable(),
   brief: ConversationBrief,
   goals: z.array(z.object({ id: z.string(), description: z.string(), achieved: z.boolean() })),
+  /** Missions: the mission's id (to retry or go to the next level). */
+  missionId: z.string().nullable(),
   turns: z.array(TranscriptTurn),
 });
 export type ConversationDetail = z.infer<typeof ConversationDetail>;

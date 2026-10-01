@@ -13,6 +13,7 @@ import {
   learnerLayer,
   LIVE_CORRECTION,
   NO_CORRECTION,
+  PRESSURE,
   SAFETY,
   TOOLS_GUIDANCE,
   TURN_TAKING,
@@ -49,6 +50,8 @@ export interface PrepareInput {
   accent: Accent;
   liveCorrection: boolean;
   learnerGoals: readonly LearningGoal[];
+  /** Missions: pressure level 1–5 (null/undefined for practice conversations). */
+  missionLevel?: number | null;
   /** Recurring mistake categories from the learning profile (PRD §35). */
   learnerWeakSpots?: readonly string[];
   timeZone: string;
@@ -67,14 +70,14 @@ export interface PreparedConversation {
   hiddenKeys: readonly string[];
   /** What the user sees before the call (PRD §24). */
   brief: { title: string; briefing: string; userRole: string; objective: string };
-  goals: Array<{ id: string; description: string }>;
+  goals: Array<{ id: string; description: string; label?: string }>;
   openingCue: string;
   wrapUpCue: string;
   tools: ToolDeclaration[];
   turnTaking: (typeof TURN_TAKING)[EnglishLevel];
 }
 
-const Goals = z.array(z.object({ id: z.string().regex(/^[a-z_]+$/), description: z.string() }));
+const Goals = z.array(z.object({ id: z.string().regex(/^[a-z_]+$/), description: z.string(), label: z.string().optional() }));
 
 export function prepareConversation(input: PrepareInput): PreparedConversation {
   const rng = input.rng ?? Math.random;
@@ -93,6 +96,7 @@ export function prepareConversation(input: PrepareInput): PreparedConversation {
     input.persona.promptFragment,
     ACCENT[input.accent],
     DIFFICULTY[input.difficulty],
+    input.missionLevel ? PRESSURE[Math.min(5, Math.max(1, input.missionLevel)) as 1 | 2 | 3 | 4 | 5] : null,
     learnerLayer(input.learnerGoals, input.learnerWeakSpots),
     TOOLS_GUIDANCE,
   ]

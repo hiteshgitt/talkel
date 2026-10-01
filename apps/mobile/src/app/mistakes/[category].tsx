@@ -5,10 +5,14 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Body, Button, Card, ErrorText, Loading, Screen, Title } from '@/components/ui';
 import { api, friendlyError } from '@/lib/api';
 import { MISTAKE_LABEL } from '@/lib/labels';
-import { colors } from '@/theme';
+import { makeStyles, useColors } from '@/theme';
+import { IconBadge } from '@/components/art';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 /** Every correction of one mistake type, so the learner can see the pattern. */
 export default function MistakesScreen() {
+  const styles = useStyles();
+  const colors = useColors();
   const { category } = useLocalSearchParams<{ category: string }>();
   const q = useQuery({ queryKey: ['progress', 'mistakes', category], queryFn: () => api.mistakes(category) });
   const parsed = GrammarCategory.safeParse(category);
@@ -17,9 +21,14 @@ export default function MistakesScreen() {
   if (q.isPending) return <Loading />;
 
   return (
-    <Screen>
+    <Screen edges={['bottom']}>
       <Stack.Screen options={{ headerShown: true, title: '' }} />
-      <Title>{title}</Title>
+      <View style={styles.head}>
+        <IconBadge name="create-outline" tint={colors.danger} size={44} />
+        <View style={styles.flex}>
+          <Title>{title}</Title>
+        </View>
+      </View>
       {q.isError ? (
         <>
           <ErrorText>{friendlyError(q.error)}</ErrorText>
@@ -35,7 +44,10 @@ export default function MistakesScreen() {
           {q.data.items.map((e, i) => (
             <Card key={i}>
               <Text style={styles.wrong}>{e.original}</Text>
-              <Text style={styles.right}>{e.corrected}</Text>
+              <View style={styles.inline}>
+                <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+                <Text style={[styles.right, styles.flex]}>{e.corrected}</Text>
+              </View>
               {e.explanation ? <Text style={styles.muted}>{e.explanation}</Text> : null}
               <Pressable
                 accessibilityRole="link"
@@ -46,7 +58,7 @@ export default function MistakesScreen() {
                   <Text style={styles.sourceText}>
                     {e.scenarioTitle} · {new Date(e.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
                   </Text>
-                  <Text style={styles.sourceText}>›</Text>
+                  <Ionicons name="chevron-forward" size={16} color={colors.accent} />
                 </View>
               </Pressable>
             </Card>
@@ -57,12 +69,17 @@ export default function MistakesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  wrong: { color: colors.danger, fontSize: 16, textDecorationLine: 'line-through' },
-  right: { color: colors.userSpeaking, fontSize: 17, fontWeight: '600' },
-  muted: { color: colors.textMuted, fontSize: 14, lineHeight: 20 },
+const useStyles = makeStyles((c) =>
+  StyleSheet.create({
+  head: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  flex: { flex: 1 },
+  inline: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  wrong: { color: c.danger, fontSize: 16, textDecorationLine: 'line-through' },
+  right: { color: c.userSpeaking, fontSize: 17, fontWeight: '600' },
+  muted: { color: c.textMuted, fontSize: 14, lineHeight: 20 },
   source: { marginTop: 6 },
   sourceRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  sourceText: { color: colors.accent, fontSize: 13, fontWeight: '600' },
+  sourceText: { color: c.accent, fontSize: 13, fontWeight: '600' },
   pressed: { opacity: 0.6 },
-});
+  }),
+);

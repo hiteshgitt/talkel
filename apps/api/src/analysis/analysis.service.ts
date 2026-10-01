@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { EnglishLevel, FeedbackLanguage, type SkillKey } from '@speakai/contracts';
+import { EnglishLevel, FeedbackLanguage, MISSION_LEVELS, type MissionResult, type SkillKey } from '@speakai/contracts';
 import type { Prisma, PrismaClient } from '@speakai/db';
 import { z } from 'zod';
 import { ENV, type Env } from '../config/env.js';
@@ -10,6 +10,7 @@ import { generateStructured } from './gemini-text.js';
 import { bandToScore, groundErrors, groundQuoted, overallScore } from './grounding.js';
 import { LearningProfileService } from './learning-profile.service.js';
 import { computeFluency } from './metrics.js';
+import { applyAttempt, isPassed, MissionSpec, missionScore } from '../missions/mission-rules.js';
 
 /** Below this, there is not enough English to give honest feedback. */
 const MIN_USER_WORDS = 8;
@@ -65,9 +66,22 @@ export class AnalysisService {
     const goals = Goals.parse(v.goals);
     const feedbackLanguage = FeedbackLanguage.catch('en').parse(session.user.settings?.feedbackLanguage);
     const scenarios = await this.prisma.scenario.findMany({
-      where: { isActive: true, publishedVersionId: { not: null } },
+      where: { type: 'PRACTICE', isActive: true, publishedVersionId: { not: null } },
       select: { slug: true, publishedVersion: { select: { title: true } } },
     });
+
+    // Missions: the evaluator judges the outcome with the rule (rendered with the full state, incl. the AI's secrets).
+    const spec = session.missionLevel !== null ? MissionSpec.safeParse(v.mission) : null;
+    const mission =
+      spec?.success && session.missionLevel !== null
+        ? {
+            level: session.missionLevel,
+            levelName: MISSION_LEVELS[session.missionLevel - 1]?.name ?? '',
+            aiCharacter: spec.data.aiCharacter,
+            skills: spec.data.skills,
+            outcome: render(spec.data.outcome),
+          }
+        : null;
 
     const prompt = buildEvaluationPrompt({
       scenario: { title: v.title, kind: v.kind, userRole: render(v.userRole), objective: render(v.objective), briefing: render(v.briefing), slug: v.scenario.slug },
@@ -77,6 +91,7 @@ export class AnalysisService {
       turns: session.turns.map((t) => ({ seq: t.seq, speaker: t.speaker, text: t.text })),
       fluency,
       availableScenarios: scenarios.map((s) => ({ slug: s.slug, title: s.publishedVersion?.title ?? s.slug })),
+      mission,
     });
 
     const result = await generateStructured(
@@ -111,6 +126,8 @@ export class AnalysisService {
     const slugs = new Set(scenarios.map((s) => s.slug));
     const recommendations = out.recommendations.map((r) => ({ ...r, scenarioSlug: r.scenarioSlug && slugs.has(r.scenarioSlug) ? r.scenarioSlug : null }));
     const bands = Object.fromEntries(Object.entries(out.skills).map(([k, s]) => [k, s.band])) as Record<SkillKey, number>;
+    const overall = overallScore(bands);
+    const missionResult = mission ? this.missionResult(mission, out.mission, overall, achieved.length, goals.length) : null;
     const skills = Object.fromEntries(
       Object.entries(out.skills).map(([k, s]) => [k, { band: s.band, score: bandToScore(s.band), rationale: s.rationale }]),
     );
@@ -119,7 +136,8 @@ export class AnalysisService {
       const analysis = await tx.sessionAnalysis.create({
         data: {
           sessionId,
-          overallScore: overallScore(bands),
+          overallScore: overall,
+          missionResult: missionResult ?? undefined,
           skills: skills as Prisma.InputJsonValue,
           summary: out.summary,
           strengths: out.strengths,
@@ -156,6 +174,21 @@ export class AnalysisService {
           outputTextTokens: result.usage.outputTokens,
         },
       });
+      if (missionResult) {
+        const scenarioId = v.scenarioId;
+        const prev = await tx.missionProgress.findUnique({ where: { userId_scenarioId: { userId: session.userId, scenarioId } } });
+        const next = applyAttempt(
+          prev ? { unlockedLevel: prev.unlockedLevel, passedLevels: prev.passedLevels, bestScores: prev.bestScores as Record<string, number>, attempts: prev.attempts } : null,
+          missionResult.level,
+          missionResult.missionScore,
+          missionResult.passed,
+        );
+        await tx.missionProgress.upsert({
+          where: { userId_scenarioId: { userId: session.userId, scenarioId } },
+          create: { userId: session.userId, scenarioId, ...next },
+          update: next,
+        });
+      }
       await this.profiles.applyAnalysis(tx, session.userId, sessionId, {
         bands,
         errorCategories: grammarErrors.map((e) => e.category),
@@ -166,6 +199,31 @@ export class AnalysisService {
 
     this.logger.log(`analysed ${sessionId} with ${result.model}: ${grammarErrors.length} corrections, ${phrasing.length} phrasing, ${moments.length} moments (${dropped} dropped), goals=${achieved.join(',') || '-'}`);
     return 'COMPLETED';
+  }
+
+  /** The mission verdict. If the model left it out, fall back to the share of objectives achieved. */
+  private missionResult(
+    mission: { level: number; skills: readonly string[] },
+    judged: EvaluationOutput['mission'],
+    overall: number,
+    achieved: number,
+    total: number,
+  ): MissionResult {
+    const ratio = total > 0 ? achieved / total : 0;
+    const result = judged?.result ?? (ratio >= 0.8 ? 'SUCCESS' : ratio >= 0.4 ? 'PARTIAL' : 'FAILED');
+    return {
+      level: mission.level,
+      result,
+      headline: judged?.headline ?? `Objectives achieved: ${achieved} of ${total}`,
+      reason: judged?.reason ?? '',
+      objectivesAchieved: achieved,
+      objectivesTotal: total,
+      missionScore: missionScore(overall, achieved, total),
+      passed: isPassed(result),
+      skills: (judged?.skills ?? [])
+        .filter((sk) => mission.skills.includes(sk.key))
+        .map((sk) => ({ key: sk.key, band: sk.band, score: bandToScore(sk.band), rationale: sk.rationale })),
+    };
   }
 
   async markFailed(sessionId: string, reason: string): Promise<void> {

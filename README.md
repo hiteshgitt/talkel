@@ -1,4 +1,4 @@
-# SpeakAI (working name)
+# Talkel — Your AI Conversation Partner
 
 AI English conversation coach: realistic voice conversations with AI characters, then personalised feedback.
 

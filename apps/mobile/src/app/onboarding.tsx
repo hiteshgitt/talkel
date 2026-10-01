@@ -7,33 +7,35 @@ import {
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { BrandMark } from '@/components/art';
 import { PrivacyNotice } from '@/components/privacy-notice';
-import { Body, Button, Choice, ErrorText, Screen, Title } from '@/components/ui';
+import { Body, Button, Choice, ErrorText, ProgressBar, Screen, Title } from '@/components/ui';
 import { api } from '@/lib/api';
 import { ME_KEY } from '@/lib/queries';
+import type { IconName } from '@/lib/visuals';
 
-const LEVELS: { id: EnglishLevel; label: string; description: string }[] = [
-  { id: 'BEGINNER', label: 'Beginner', description: 'I understand simple English but find it hard to speak.' },
-  { id: 'INTERMEDIATE', label: 'Intermediate', description: 'I can talk about everyday topics, with some pauses.' },
-  { id: 'UPPER_INTERMEDIATE', label: 'Upper intermediate', description: 'I speak fairly well but want to sound more natural.' },
-  { id: 'ADVANCED', label: 'Advanced', description: 'I speak confidently and want to handle tough conversations.' },
-  { id: 'EXPERT', label: 'Expert', description: 'Near-native. I want challenging, fast conversations.' },
+const LEVELS: { id: EnglishLevel; label: string; description: string; icon: IconName }[] = [
+  { id: 'BEGINNER', label: 'Beginner', description: 'I understand simple English but find it hard to speak.', icon: 'leaf-outline' },
+  { id: 'INTERMEDIATE', label: 'Intermediate', description: 'I can talk about everyday topics, with some pauses.', icon: 'walk-outline' },
+  { id: 'UPPER_INTERMEDIATE', label: 'Upper intermediate', description: 'I speak fairly well but want to sound more natural.', icon: 'bicycle-outline' },
+  { id: 'ADVANCED', label: 'Advanced', description: 'I speak confidently and want to handle tough conversations.', icon: 'rocket-outline' },
+  { id: 'EXPERT', label: 'Expert', description: 'Near-native. I want challenging, fast conversations.', icon: 'trophy-outline' },
 ];
 
-const GOALS: { id: LearningGoal; label: string }[] = [
-  { id: 'daily_conversation', label: 'Everyday conversation' },
-  { id: 'job_interviews', label: 'Job interviews' },
-  { id: 'work_meetings', label: 'Work meetings' },
-  { id: 'client_calls', label: 'Client calls' },
-  { id: 'presentations', label: 'Presentations' },
-  { id: 'travel', label: 'Travel' },
-  { id: 'exams_migration', label: 'Exams / migration' },
-  { id: 'confidence', label: 'Speaking confidence' },
+const GOALS: { id: LearningGoal; label: string; icon: IconName }[] = [
+  { id: 'daily_conversation', label: 'Everyday conversation', icon: 'cafe-outline' },
+  { id: 'job_interviews', label: 'Job interviews', icon: 'briefcase-outline' },
+  { id: 'work_meetings', label: 'Work meetings', icon: 'people-outline' },
+  { id: 'client_calls', label: 'Client calls', icon: 'call-outline' },
+  { id: 'presentations', label: 'Presentations', icon: 'easel-outline' },
+  { id: 'travel', label: 'Travel', icon: 'airplane-outline' },
+  { id: 'exams_migration', label: 'Exams / migration', icon: 'school-outline' },
+  { id: 'confidence', label: 'Speaking confidence', icon: 'happy-outline' },
 ];
 
-const LANGUAGES: { id: FeedbackLanguage; label: string; description: string }[] = [
-  { id: 'en', label: 'English', description: 'Explanations in English' },
-  { id: 'hi', label: 'हिन्दी (Hindi)', description: 'Explanations in Hindi — conversations stay in English' },
+const LANGUAGES: { id: FeedbackLanguage; label: string; description: string; icon: IconName }[] = [
+  { id: 'en', label: 'English', description: 'Explanations in English', icon: 'text-outline' },
+  { id: 'hi', label: 'हिन्दी (Hindi)', description: 'Explanations in Hindi — conversations stay in English', icon: 'language-outline' },
 ];
 
 const STEPS = ['level', 'goals', 'language', 'consent'] as const;
@@ -59,20 +61,24 @@ export default function OnboardingScreen() {
   const toggleGoal = (g: LearningGoal) => setGoals((cur) => (cur.includes(g) ? cur.filter((x) => x !== g) : [...cur, g]));
 
   return (
-    <Screen style={{ paddingTop: 32 }}>
-      <Body muted>
-        Step {index + 1} of {STEPS.length}
-      </Body>
+    <Screen style={{ paddingTop: 20 }}>
+      <View style={styles.progress}>
+        {index === 0 ? <BrandMark size={44} /> : null}
+        <Body muted>
+          Step {index + 1} of {STEPS.length}
+        </Body>
+        <ProgressBar value={(index + 1) / STEPS.length} height={6} />
+      </View>
 
       {step === 'level' && (
         <>
           <Title>How is your spoken English?</Title>
           <Body muted>This sets how the AI talks to you. You can change it any time.</Body>
           {LEVELS.map((l) => (
-            <Choice key={l.id} label={l.label} description={l.description} selected={level === l.id} onPress={() => setLevel(l.id)} />
+            <Choice key={l.id} icon={l.icon} label={l.label} description={l.description} selected={level === l.id} onPress={() => setLevel(l.id)} />
           ))}
           {!level ? <Body muted>Choose one to continue.</Body> : null}
-          <Button label="Continue" onPress={next} disabled={!level} />
+          <Button label="Continue" icon="arrow-forward" onPress={next} disabled={!level} />
         </>
       )}
 
@@ -82,11 +88,11 @@ export default function OnboardingScreen() {
           <Body muted>Pick as many as you like.</Body>
           <View style={styles.chips}>
             {GOALS.map((g) => (
-              <Choice key={g.id} compact role="checkbox" label={g.label} selected={goals.includes(g.id)} onPress={() => toggleGoal(g.id)} />
+              <Choice key={g.id} compact role="checkbox" icon={g.icon} label={g.label} selected={goals.includes(g.id)} onPress={() => toggleGoal(g.id)} />
             ))}
           </View>
           {goals.length === 0 ? <Body muted>Choose at least one to continue.</Body> : null}
-          <Button label="Continue" onPress={next} disabled={goals.length === 0} />
+          <Button label="Continue" icon="arrow-forward" onPress={next} disabled={goals.length === 0} />
           <Button label="Back" variant="ghost" onPress={back} />
         </>
       )}
@@ -96,9 +102,9 @@ export default function OnboardingScreen() {
           <Title>Feedback language</Title>
           <Body muted>After each conversation you get feedback. Which language should we explain it in?</Body>
           {LANGUAGES.map((l) => (
-            <Choice key={l.id} label={l.label} description={l.description} selected={language === l.id} onPress={() => setLanguage(l.id)} />
+            <Choice key={l.id} icon={l.icon} label={l.label} description={l.description} selected={language === l.id} onPress={() => setLanguage(l.id)} />
           ))}
-          <Button label="Continue" onPress={next} />
+          <Button label="Continue" icon="arrow-forward" onPress={next} />
           <Button label="Back" variant="ghost" onPress={back} />
         </>
       )}
@@ -116,7 +122,7 @@ export default function OnboardingScreen() {
           />
           {!consent ? <Body muted>Tick “I agree” to continue.</Body> : null}
           <ErrorText>{submit.error instanceof Error ? submit.error.message : null}</ErrorText>
-          <Button label="Start practising" onPress={() => submit.mutate()} loading={submit.isPending} disabled={!consent || !level} />
+          <Button label="Start practising" icon="mic" onPress={() => submit.mutate()} loading={submit.isPending} disabled={!consent || !level} />
           <Button label="Back" variant="ghost" onPress={back} />
         </>
       )}
@@ -126,4 +132,5 @@ export default function OnboardingScreen() {
 
 const styles = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  progress: { gap: 10, marginBottom: 4 },
 });

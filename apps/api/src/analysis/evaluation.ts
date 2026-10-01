@@ -2,11 +2,11 @@
  * The evaluation AI (PRD §75–76): separate from the conversation AI, optimised for accuracy and
  * structured output. Its answer is validated with Zod — raw LLM JSON is never trusted.
  */
-import { type FeedbackLanguage, GrammarCategory, MomentKind } from '@speakai/contracts';
+import { type FeedbackLanguage, GrammarCategory, MissionSkill, MomentKind } from '@speakai/contracts';
 import { z } from 'zod';
 import type { FluencyResult } from './metrics.js';
 
-export const EVAL_PROMPT_VERSION = 'eval-v2';
+export const EVAL_PROMPT_VERSION = 'eval-v3';
 
 const Band = z.number().int().min(1).max(5);
 const Skill = z.object({ band: Band, rationale: z.string().min(1).max(400) });
@@ -68,6 +68,15 @@ export const EvaluationOutput = z.object({
     .max(5),
   translationPatterns: z.array(z.string().max(250)).max(3),
   goalsAchieved: z.array(z.string()).max(10),
+  /** Missions only (null otherwise): did the user achieve the mission, and mission-specific skills. */
+  mission: z
+    .object({
+      result: z.enum(['SUCCESS', 'PARTIAL', 'FAILED']),
+      headline: z.string().min(1).max(120),
+      reason: z.string().min(1).max(500),
+      skills: z.array(z.object({ key: MissionSkill, band: Band, rationale: z.string().min(1).max(300) })).max(4),
+    })
+    .nullable(),
   recommendations: z
     .array(
       z.object({
@@ -137,6 +146,8 @@ export interface EvaluationInput {
   turns: Array<{ seq: number; speaker: 'USER' | 'AI'; text: string }>;
   fluency: FluencyResult;
   availableScenarios: Array<{ slug: string; title: string }>;
+  /** Missions only. `outcome` is the rendered success rule (it may mention the AI's secrets). */
+  mission?: { level: number; levelName: string; aiCharacter: string; skills: readonly string[]; outcome: string } | null;
 }
 
 const LANGUAGE_NAME: Record<FeedbackLanguage, string> = { en: 'English', hi: 'Hindi (in Devanagari script, simple everyday Hindi)' };
@@ -178,8 +189,11 @@ Rules:
   pattern with a tip. Never claim to know what language they were thinking in.
 - goalsAchieved: ids from the goal list that the learner clearly achieved.
 - recommendations: up to 3 next steps; for type SCENARIO use one of the available scenario slugs.
+- mission: null unless the input has a MISSION section. If it does: judge the result strictly by the outcome rule
+  (SUCCESS / PARTIAL / FAILED), write a short factual headline (≤ 10 words, state numbers when the rule asks for them),
+  a reason of 1–2 sentences, and a band (1–5) with evidence for each listed mission skill.
 - Write summary, strengths, focusAreas, rationales, explanations, "why", notes, translationPatterns and recommendation
-  titles/reasons in ${LANGUAGE_NAME[input.feedbackLanguage]}. Keep "original", "corrected", "better", "youSaid",
+  titles/reasons, mission headline and reason in ${LANGUAGE_NAME[input.feedbackLanguage]}. Keep "original", "corrected", "better", "youSaid",
   vocabulary terms, alternatives and examples in English.
 - Be warm, specific and honest. Short sentences. If the learner said very little, say so and keep feedback brief.
 `.trim();
@@ -207,7 +221,16 @@ MEASURED FLUENCY FACTS:
 - Filler words found in the transcript: ${JSON.stringify(f.fillerCounts)} (speech recognition may drop some fillers)
 - Response time after the AI finished: median ${f.latencyP50Ms ?? 'n/a'} ms; pauses over 5 s: ${f.longPauseCount}
 
-AVAILABLE SCENARIOS (slug: title): ${input.availableScenarios.map((s) => `${s.slug}: ${s.title}`).join('; ')}
+${
+  input.mission
+    ? `MISSION (level ${input.mission.level} of 5, "${input.mission.levelName}"):
+- The AI played: ${input.mission.aiCharacter}
+- Outcome rule: ${input.mission.outcome}
+- Mission skills to score: ${input.mission.skills.join(', ')}
+
+`
+    : ''
+}AVAILABLE SCENARIOS (slug: title): ${input.availableScenarios.map((s) => `${s.slug}: ${s.title}`).join('; ')}
 
 TRANSCRIPT (numbers are line ids for turnSeq):
 ${lines}

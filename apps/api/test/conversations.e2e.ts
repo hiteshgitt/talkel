@@ -2,7 +2,7 @@
  * Full conversation lifecycle against the compiled server, a real Postgres, a fake Gemini Live
  * server and a headless WebRTC phone.
  */
-import { CONSENT_VERSION, MistakeList, Progress } from '@speakai/contracts';
+import { CONSENT_VERSION, MissionList, MistakeList, Progress } from '@speakai/contracts';
 import type { Catalog, ConversationDetail, ConversationList, CreateConversationResponse, Quota } from '@speakai/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type ApiProcess, startApi, startWorker } from './support/api-process.js';
@@ -164,7 +164,7 @@ describe('a full conversation', () => {
 
     // 7. history
     const list = (await (await get('/conversations', alice)).json()) as ConversationList;
-    expect(list.items[0]).toMatchObject({ id: created.id, scenarioTitle: 'Bargaining', status: 'ENDED' });
+    expect(list.items[0]).toMatchObject({ id: created.id, scenarioTitle: 'Bargaining', scenarioSlug: 'bargaining', status: 'ENDED' });
 
     // 8. after-call feedback: queued, analysed by the worker, grounded and saved
     let detail: ConversationDetail | null = null;
@@ -177,6 +177,8 @@ describe('a full conversation', () => {
     const f = d.feedback!;
     // Overall comes from the bands (3,4,4,3,4), not from the model.
     expect(f.overallScore).toBe(70);
+    const listed = (await (await get('/conversations', alice)).json()) as ConversationList;
+    expect(listed.items[0]).toMatchObject({ id: created.id, overallScore: 70 });
     expect(f.skills.grammar).toEqual({ band: 3, score: 60, rationale: 'Some tense errors.' });
     // Invented corrections are dropped (one quotes the AI, one quotes words the learner never said);
     // the genuine one is kept.
@@ -287,3 +289,77 @@ describe('ownership and limits', () => {
     expect(unknown.status).toBe(404);
   });
 });
+
+describe('missions', () => {
+  it('lists missions separately from practice, without prompts, secrets or outcome rules', async () => {
+    expect(catalog.scenarios.some((s) => s.slug.startsWith('mission-'))).toBe(false);
+    const res = await get('/missions', alice);
+    const { missions } = MissionList.parse(await res.json());
+    expect(missions.map((m) => m.slug)).toEqual([
+      'mission-get-the-job',
+      'mission-negotiate-raise',
+      'mission-angry-customer',
+      'mission-hotel-problem',
+      'mission-win-the-debate',
+      'mission-bargain',
+    ]);
+    expect(missions[1]).toMatchObject({ group: 'career', progress: { unlockedLevel: 1, passedLevels: [], attempts: 0 } });
+    expect(missions[1]!.objectives[0]).toBe('Make your case with concrete results');
+    expect(JSON.stringify(missions)).not.toMatch(/ceiling|acceptable|concession|floorPrice|SUCCESS|promptTemplate/);
+  });
+
+  it('plays a level, judges the outcome and unlocks the next level', async () => {
+    const { missions } = MissionList.parse(await (await get('/missions', alice)).json());
+    const bargain = missions.find((m) => m.slug === 'mission-bargain')!;
+
+    const locked = await post('/conversations', alice, { scenarioId: bargain.id, missionLevel: 2 });
+    expect(locked.status).toBe(403);
+    expect(await locked.json()).toMatchObject({ code: 'MISSION_LEVEL_LOCKED' });
+
+    const created = (await (await post('/conversations', alice, { scenarioId: bargain.id, missionLevel: 1, durationSec: 60 })).json()) as CreateConversationResponse;
+    expect(created.mission).toEqual({ level: 1, objectives: bargain.objectives, aiCharacter: bargain.aiCharacter });
+
+    const phone = await createFakePhone();
+    const { sdpAnswer } = (await (await post(`/conversations/${created.id}/connect`, alice, { sdpOffer: phone.offer })).json()) as { sdpAnswer: string };
+    // The pressure level reaches the AI's instructions.
+    expect(JSON.stringify(gemini.setups.at(-1)!.systemInstruction)).toContain('Mission difficulty 1 of 5');
+    await phone.accept(sdpAnswer);
+    await phone.waitForDataChannel();
+    await post(`/conversations/${created.id}/ready`, alice);
+    await until(() => gemini.toolResponses.some((t) => t.id === 'offer-1'));
+    await new Promise((r) => setTimeout(r, 500));
+    await post(`/conversations/${created.id}/end`, alice);
+    await phone.close();
+
+    let detail: ConversationDetail | null = null;
+    await until(async () => {
+      detail = (await (await get(`/conversations/${created.id}`, alice)).json()) as ConversationDetail;
+      return detail.analysisStatus === 'COMPLETED' || detail.analysisStatus === 'FAILED';
+    }, 20_000);
+    const d = detail as unknown as ConversationDetail;
+    expect(d.missionId).toBe(bargain.id);
+    expect(d.missionLevel).toBe(1);
+    // The evaluator got the outcome rule with the seller's secret minimum; the user never sees it.
+    expect(gemini.evaluations.at(-1)).toMatch(/MISSION \(level 1 of 5, \\"Comfortable\\"\)/);
+    expect(gemini.evaluations.at(-1)).toContain('secret minimum');
+    expect(d.feedback!.mission).toMatchObject({
+      level: 1,
+      result: 'SUCCESS',
+      headline: 'Bought for ₹1,450 (asked ₹2,500)',
+      passed: true,
+      objectivesAchieved: 1,
+      objectivesTotal: 4,
+      missionScore: 50, // (overall 70 + objectives 25) / 2 = 47.5 → 50
+      skills: [{ key: 'persuasion', band: 4, score: 80, rationale: 'Gave a reason.' }], // non-mission skill dropped
+    });
+
+    const after = MissionList.parse(await (await get('/missions', alice)).json()).missions.find((m) => m.slug === 'mission-bargain')!;
+    expect(after.progress).toEqual({ unlockedLevel: 2, passedLevels: [1], bestScores: { '1': 50 }, attempts: 1 });
+    const listed = (await (await get('/conversations', alice)).json()) as ConversationList;
+    expect(listed.items[0]).toMatchObject({ id: created.id, missionLevel: 1 });
+    const next = await post('/conversations', alice, { scenarioId: bargain.id, missionLevel: 2 });
+    expect(next.status).toBe(201);
+    await post(`/conversations/${((await next.json()) as CreateConversationResponse).id}/end`, alice);
+  });
+});
+

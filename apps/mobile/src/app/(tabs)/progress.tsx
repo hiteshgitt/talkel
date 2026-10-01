@@ -5,11 +5,13 @@ import { useCallback } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MiniBars, PracticeCalendar, TrendBadge } from '@/components/progress-charts';
+import { TrendLine } from '@/components/vector';
 import { Body, Button, Card, ErrorText, Loading, Title } from '@/components/ui';
 import { api, friendlyError } from '@/lib/api';
 import { MISTAKE_LABEL } from '@/lib/labels';
 import { formatMinutes } from '@/lib/queries';
-import { colors } from '@/theme';
+import { makeStyles, useColors } from '@/theme';
+import { IconBadge } from '@/components/art';
 
 const SKILLS = [
   ['grammar', 'Grammar'],
@@ -34,6 +36,8 @@ const CONFIDENCE: Record<ConfidenceKey, { label: string; format: (v: number) => 
 };
 
 export default function ProgressScreen() {
+  const styles = useStyles();
+  const colors = useColors();
   const q = useQuery({ queryKey: ['progress'], queryFn: api.progress });
   const { refetch } = q;
   // New feedback arrives in the background; refresh whenever the tab is opened.
@@ -50,7 +54,7 @@ export default function ProgressScreen() {
     <SafeAreaView style={styles.root} edges={['top']}>
       <ScrollView
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => void q.refetch()} tintColor={colors.text} />}
+        refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => void q.refetch()} tintColor={colors.accent} colors={[colors.accent]} />}
       >
         <Title>Progress</Title>
         {q.isError ? <ErrorText>{friendlyError(q.error)}</ErrorText> : null}
@@ -81,7 +85,10 @@ export default function ProgressScreen() {
 
             {p.commonMistakes.length ? (
               <Card>
-                <Text style={styles.h}>Mistakes you make most</Text>
+                <View style={styles.headRow}>
+                  <IconBadge name="create-outline" tint={colors.danger} size={32} />
+                  <Text style={styles.h}>Mistakes you make most</Text>
+                </View>
                 <Body muted>Tap one to review every example. Your conversations will give you chances to practise these.</Body>
                 {p.commonMistakes.map((m) => (
                   <Pressable
@@ -103,7 +110,10 @@ export default function ProgressScreen() {
 
             {p.recentCorrections.length ? (
               <Card>
-                <Text style={styles.h}>Recent corrections</Text>
+                <View style={styles.headRow}>
+                  <IconBadge name="checkmark-done-outline" tint={colors.success} size={32} />
+                  <Text style={styles.h}>Recent corrections</Text>
+                </View>
                 {p.recentCorrections.map((c, i) => (
                   <View key={i} style={styles.correction}>
                     <Text style={styles.wrong}>{c.original}</Text>
@@ -115,7 +125,10 @@ export default function ProgressScreen() {
 
             {p.commonFillers.length ? (
               <Card>
-                <Text style={styles.h}>Filler words</Text>
+                <View style={styles.headRow}>
+                  <IconBadge name="chatbox-ellipses-outline" tint={colors.warning} size={32} />
+                  <Text style={styles.h}>Filler words</Text>
+                </View>
                 <Text style={styles.item}>{p.commonFillers.map((f) => `“${f.word}” ×${f.count}`).join(' · ')}</Text>
               </Card>
             ) : null}
@@ -127,6 +140,7 @@ export default function ProgressScreen() {
 }
 
 function Stat({ value, label }: { value: string; label: string }) {
+  const styles = useStyles();
   return (
     <Card style={styles.stat}>
       <Text style={styles.statValue}>{value}</Text>
@@ -136,10 +150,15 @@ function Stat({ value, label }: { value: string; label: string }) {
 }
 
 function PracticeCard({ p }: { p: Progress }) {
+  const styles = useStyles();
+  const colors = useColors();
   return (
     <Card>
       <View style={styles.row}>
-        <Text style={styles.h}>Practice</Text>
+        <View style={styles.headRow}>
+          <IconBadge name="calendar-outline" tint={colors.success} size={32} />
+          <Text style={styles.h}>Practice</Text>
+        </View>
         <Text style={styles.muted}>
           {p.streak.current} {p.streak.current === 1 ? 'day' : 'days'} streak{p.streak.current ? ' 🔥' : ''} · best {p.streak.longest}
         </Text>
@@ -151,20 +170,27 @@ function PracticeCard({ p }: { p: Progress }) {
 }
 
 function OverallCard({ p }: { p: Progress }) {
+  const styles = useStyles();
+  const colors = useColors();
   const h = p.history;
   const last = h.at(-1);
   if (!last) return null;
   return (
     <Card>
       <View style={styles.row}>
-        <Text style={styles.h}>Overall score</Text>
+        <View style={styles.headRow}>
+          <IconBadge name="star-outline" tint={colors.accent} size={32} />
+          <Text style={styles.h}>Overall score</Text>
+        </View>
         <Text style={styles.big}>{last.overall}</Text>
       </View>
       <Body muted>
         {h.length > 1 ? `Your last ${h.length} conversations. Tap a bar to open it.` : 'Your score in each conversation will appear here.'}
       </Body>
+      {h.length > 1 ? <TrendLine values={h.map((x) => x.overall)} color={colors.accent} height={80} /> : null}
       <MiniBars
         values={h.map((x) => x.overall)}
+        height={36}
         onPress={(i) => router.push({ pathname: '/conversation/[id]', params: { id: h[i]!.conversationId } })}
       />
     </Card>
@@ -172,9 +198,14 @@ function OverallCard({ p }: { p: Progress }) {
 }
 
 function SkillsCard({ p }: { p: Progress }) {
+  const styles = useStyles();
+  const colors = useColors();
   return (
     <Card>
-      <Text style={styles.h}>Your skills</Text>
+      <View style={styles.headRow}>
+        <IconBadge name="podium-outline" tint={colors.accent} size={32} />
+        <Text style={styles.h}>Your skills</Text>
+      </View>
       <Body muted>Recent conversations count more.</Body>
       {SKILLS.map(([key, label]) => {
         const v = p.skills[key];
@@ -201,12 +232,17 @@ function SkillsCard({ p }: { p: Progress }) {
 }
 
 function ConfidenceCard({ indicators }: { indicators: ConfidenceIndicator[] }) {
+  const styles = useStyles();
+  const colors = useColors();
   const shown = indicators.filter((i) => i.recent !== null);
   if (!shown.length) return null;
   const comparing = shown.some((i) => i.trend !== null);
   return (
     <Card>
-      <Text style={styles.h}>Speaking confidence</Text>
+      <View style={styles.headRow}>
+        <IconBadge name="happy-outline" tint={colors.success} size={32} />
+        <Text style={styles.h}>Speaking confidence</Text>
+      </View>
       <Body muted>
         {comparing
           ? 'Signs of confidence we can measure: your last 3 conversations compared with the 3 before.'
@@ -231,31 +267,34 @@ function ConfidenceCard({ indicators }: { indicators: ConfidenceIndicator[] }) {
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bg },
+const useStyles = makeStyles((c) =>
+  StyleSheet.create({
+  root: { flex: 1, backgroundColor: c.bg },
   content: { padding: 20, gap: 16 },
   stats: { flexDirection: 'row', gap: 10 },
   stat: { flex: 1, gap: 4, paddingHorizontal: 12 },
-  statValue: { color: colors.text, fontSize: 22, fontWeight: '800' },
-  statLabel: { color: colors.textMuted, fontSize: 12 },
-  h: { color: colors.text, fontSize: 17, fontWeight: '700' },
-  big: { color: colors.text, fontSize: 22, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  statValue: { color: c.text, fontSize: 22, fontWeight: '800' },
+  statLabel: { color: c.textMuted, fontSize: 12 },
+  headRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  h: { color: c.text, fontSize: 17, fontWeight: '700' },
+  big: { color: c.text, fontSize: 22, fontWeight: '800', fontVariant: ['tabular-nums'] },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
-  item: { color: colors.text, fontSize: 15, lineHeight: 22, flexShrink: 1 },
-  muted: { color: colors.textMuted, fontSize: 14 },
-  value: { color: colors.text, fontWeight: '700' },
-  count: { color: colors.textMuted, fontSize: 14, fontVariant: ['tabular-nums'] },
-  chevron: { color: colors.textMuted, fontSize: 20 },
+  item: { color: c.text, fontSize: 15, lineHeight: 22, flexShrink: 1 },
+  muted: { color: c.textMuted, fontSize: 14 },
+  value: { color: c.text, fontWeight: '700' },
+  count: { color: c.textMuted, fontSize: 14, fontVariant: ['tabular-nums'] },
+  chevron: { color: c.textMuted, fontSize: 20 },
   mistake: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, paddingVertical: 6 },
   mistakeRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   pressed: { opacity: 0.6 },
   skill: { gap: 6, marginTop: 8 },
   indicator: { gap: 2, marginTop: 8 },
-  skillName: { color: colors.text, fontSize: 15, fontWeight: '600', flexShrink: 1 },
-  skillScore: { color: colors.textMuted, fontSize: 14, fontVariant: ['tabular-nums'] },
-  bar: { height: 6, borderRadius: 3, backgroundColor: colors.surfaceRaised, overflow: 'hidden' },
-  fill: { height: 6, backgroundColor: colors.accent },
-  correction: { gap: 2, paddingVertical: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
-  wrong: { color: colors.danger, fontSize: 15, textDecorationLine: 'line-through' },
-  right: { color: colors.userSpeaking, fontSize: 15, fontWeight: '600' },
-});
+  skillName: { color: c.text, fontSize: 15, fontWeight: '600', flexShrink: 1 },
+  skillScore: { color: c.textMuted, fontSize: 14, fontVariant: ['tabular-nums'] },
+  bar: { height: 6, borderRadius: 3, backgroundColor: c.surfaceRaised, overflow: 'hidden' },
+  fill: { height: 6, backgroundColor: c.accent },
+  correction: { gap: 2, paddingVertical: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.border },
+  wrong: { color: c.danger, fontSize: 15, textDecorationLine: 'line-through' },
+  right: { color: c.userSpeaking, fontSize: 15, fontWeight: '600' },
+  }),
+);

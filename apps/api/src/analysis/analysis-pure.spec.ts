@@ -188,6 +188,7 @@ describe('evaluation prompt', () => {
       conversationMoments: [],
       translationPatterns: [],
       goalsAchieved: [],
+      mission: null,
       recommendations: [],
     };
     expect(EvaluationOutput.safeParse(raw).success).toBe(false);

@@ -7,6 +7,7 @@ import {
   type CreateConversationRequest,
   CreateConversationResponse,
   Me,
+  MissionList,
   MistakeList,
   type OnboardingRequest,
   Progress,
@@ -83,6 +84,7 @@ export const api = {
   catalog: () => request('/catalog', { method: 'GET' }, Catalog),
   quota: () => request('/quota', { method: 'GET' }, Quota),
   progress: () => request('/progress', { method: 'GET' }, Progress),
+  missions: () => request('/missions', { method: 'GET' }, MissionList),
   mistakes: (category: string) => request(`/progress/mistakes/${encodeURIComponent(category)}`, { method: 'GET' }, MistakeList),
 
   createConversation: (body: CreateConversationRequest) =>

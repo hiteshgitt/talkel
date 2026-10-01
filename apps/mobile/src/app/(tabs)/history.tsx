@@ -1,19 +1,28 @@
 import type { ConversationSummary } from '@speakai/contracts';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LEVEL_LABEL } from '@/components/pickers';
-import { Body, Button, ErrorText, Loading, Title } from '@/components/ui';
+import { ScenarioArt } from '@/components/art';
+import { Badge, Card, EmptyState, ErrorText, Loading, Title } from '@/components/ui';
+import { Gauge } from '@/components/vector';
 import { api, friendlyError } from '@/lib/api';
 import { CONVERSATIONS_KEY, formatMinutes } from '@/lib/queries';
-import { colors, radius } from '@/theme';
+import { makeStyles, useColors } from '@/theme';
 
 function when(iso: string): string {
-  return new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+  const d = new Date(iso);
+  const today = new Date();
+  const yesterday = new Date(today.getTime() - 86_400_000);
+  const time = d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+  if (d.toDateString() === today.toDateString()) return `Today, ${time}`;
+  if (d.toDateString() === yesterday.toDateString()) return `Yesterday, ${time}`;
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 }
 
 export default function HistoryScreen() {
+  const s = useStyles();
+  const c = useColors();
   const q = useInfiniteQuery({
     queryKey: CONVERSATIONS_KEY,
     queryFn: ({ pageParam }) => api.conversations(pageParam),
@@ -25,57 +34,79 @@ export default function HistoryScreen() {
   const items = q.data?.pages.flatMap((p) => p.items) ?? [];
 
   return (
-    <SafeAreaView style={styles.root} edges={['top']}>
+    <SafeAreaView style={s.root} edges={['top']}>
       <FlatList
         data={items}
-        keyExtractor={(c) => c.id}
-        contentContainerStyle={styles.list}
+        keyExtractor={(x) => x.id}
+        contentContainerStyle={s.list}
+        showsVerticalScrollIndicator={false}
         ListHeaderComponent={
-          <View style={styles.header}>
+          <View style={s.header}>
             <Title>History</Title>
+            {items.length ? <Text style={s.subtitle}>Tap a conversation for its transcript and feedback.</Text> : null}
             {q.isError ? <ErrorText>{friendlyError(q.error)}</ErrorText> : null}
           </View>
         }
         ListEmptyComponent={
-          <View style={styles.empty}>
-            <Body muted>No conversations yet. Your transcripts will appear here after each call.</Body>
-            <Button label="Start practising" onPress={() => router.push('/practice')} />
-          </View>
+          <EmptyState
+            icon="chatbubbles-outline"
+            title="No conversations yet"
+            body="After each call, its transcript and feedback appear here."
+            action={{ label: 'Start practising', onPress: () => router.push('/practice') }}
+          />
         }
         renderItem={({ item }) => <Row c={item} />}
         onEndReached={() => q.hasNextPage && !q.isFetchingNextPage && void q.fetchNextPage()}
-        refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => void q.refetch()} tintColor={colors.text} />}
+        refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => void q.refetch()} tintColor={c.accent} colors={[c.accent]} />}
       />
     </SafeAreaView>
   );
 }
 
-function Row({ c }: { c: ConversationSummary }) {
+function Row({ c: x }: { c: ConversationSummary }) {
+  const s = useStyles();
+  const live = x.status === 'ACTIVE' || x.status === 'CONNECTING' || x.status === 'RECONNECTING';
   return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={() => router.push({ pathname: '/conversation/[id]', params: { id: c.id } })}
-      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-    >
-      <View style={styles.rowTop}>
-        <Text style={styles.title}>{c.scenarioTitle}</Text>
-        <Text style={styles.meta}>{when(c.createdAt)}</Text>
+    <Card onPress={() => router.push({ pathname: '/conversation/[id]', params: { id: x.id } })} accessibilityLabel={x.scenarioTitle} style={s.card}>
+      <View style={s.row}>
+        <ScenarioArt slug={x.scenarioSlug} size={48} />
+        <View style={s.text}>
+          <Text style={s.title} numberOfLines={1}>
+            {x.scenarioTitle}
+          </Text>
+          <Text style={s.meta} numberOfLines={1}>
+            with {x.personaName}
+            {x.durationMs !== null ? ` · ${formatMinutes(Math.round(x.durationMs / 1000))}` : ''}
+          </Text>
+          <View style={s.dateRow}>
+            <Text style={s.date}>{when(x.createdAt)}</Text>
+            {x.missionLevel !== null ? <Badge label={`Mission · L${x.missionLevel}`} tone="accent" icon="flag" /> : null}
+          </View>
+        </View>
+        {live ? <Badge label="Live" tone="success" /> : x.overallScore !== null ? <Score value={x.overallScore} /> : null}
       </View>
-      <Text style={styles.meta}>
-        with {c.personaName} · {LEVEL_LABEL[c.difficulty]} · {c.durationMs !== null ? formatMinutes(Math.round(c.durationMs / 1000)) : 'in progress'} · {c.turnCount} turns
-      </Text>
-    </Pressable>
+    </Card>
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bg },
-  list: { padding: 20, gap: 12 },
-  header: { gap: 8, marginBottom: 4 },
-  empty: { gap: 16, marginTop: 8 },
-  row: { backgroundColor: colors.surface, borderRadius: radius.md, padding: 16, gap: 6 },
-  pressed: { opacity: 0.7 },
-  rowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 },
-  title: { color: colors.text, fontSize: 17, fontWeight: '600', flexShrink: 1 },
-  meta: { color: colors.textMuted, fontSize: 13 },
-});
+function Score({ value }: { value: number }) {
+  const c = useColors();
+  const color = value >= 75 ? c.success : value >= 55 ? c.accent : c.warning;
+  return <Gauge value={value} size={48} stroke={5} color={color} />;
+}
+
+const useStyles = makeStyles((c) =>
+  StyleSheet.create({
+    root: { flex: 1, backgroundColor: c.bg },
+    list: { padding: 20, paddingBottom: 32, gap: 12 },
+    header: { gap: 6, marginBottom: 6 },
+    subtitle: { color: c.textMuted, fontSize: 14 },
+    card: { paddingVertical: 14 },
+    row: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+    text: { flex: 1, gap: 2 },
+    title: { color: c.text, fontSize: 16, fontWeight: '700' },
+    meta: { color: c.textMuted, fontSize: 13 },
+    date: { color: c.textFaint, fontSize: 12 },
+    dateRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  }),
+);

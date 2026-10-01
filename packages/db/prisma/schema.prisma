@@ -1,4 +1,4 @@
-// SpeakAI database schema (Prisma ORM 7). See docs/DATABASE.md for the full design;
+// Talkel database schema (Prisma ORM 7). See docs/DATABASE.md for the full design;
 // tables are added milestone by milestone. M1: identity, profile, settings.
 
 generator client {
@@ -38,6 +38,7 @@ model User {
   conversations   ConversationSession[]
   usageRecords    UsageRecord[]
   learningProfile LearningProfile?
+  missionProgress MissionProgress[]
   grammarErrors   GrammarError[]
   vocabularyItems VocabularyItem[]
 
@@ -168,9 +169,16 @@ model ScenarioCategory {
   @@map("scenario_categories")
 }
 
+/// PRACTICE: open-ended conversation (Practice tab). MISSION: objectives, an AI with its own goal, levels and a result.
+enum ScenarioType {
+  PRACTICE
+  MISSION
+}
+
 model Scenario {
   id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   slug               String            @unique
+  type               ScenarioType      @default(PRACTICE)
   categoryId         String            @db.Uuid
   category           ScenarioCategory  @relation(fields: [categoryId], references: [id])
   isActive           Boolean           @default(false)
@@ -178,6 +186,7 @@ model Scenario {
   publishedVersionId String?           @unique @db.Uuid
   publishedVersion   ScenarioVersion?  @relation("Published", fields: [publishedVersionId], references: [id])
   versions           ScenarioVersion[] @relation("Versions")
+  missionProgress    MissionProgress[]
   createdAt          DateTime          @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime          @updatedAt @db.Timestamptz(3)
 
@@ -205,8 +214,10 @@ model ScenarioVersion {
   promptTemplate   String
   /// Per-kind parameters (validated by the engine); may contain hidden values like a floor price
   params           Json
-  /// [{ id, description }]
+  /// [{ id, description, label? }] — label is the user-facing wording (mission objectives)
   goals            Json
+  /// Missions only: { group, aiCharacter, skills[], outcome } (see packages/db/src/content.ts)
+  mission          Json?
   createdAt        DateTime      @default(now()) @db.Timestamptz(3)
   publishedAt      DateTime?     @db.Timestamptz(3)
 
@@ -297,6 +308,8 @@ model ConversationSession {
   recordingBytes      Int?
   /// After-call feedback (Milestone 3)
   analysisStatus      AnalysisStatus  @default(PENDING)
+  /// Missions: the pressure level (1–5) this attempt was played at; null for practice conversations
+  missionLevel        Int?
   /// Measured live: total user speech time and timing metrics (latencies, long pauses)
   userSpeakingMs      Int?
   liveMetrics         Json?
@@ -413,6 +426,8 @@ model SessionAnalysis {
   /// Replies the learner could have handled better (eval-v2): [{ turnSeq, youSaid, better, why, kind }]
   conversationMoments Json                @default("[]")
   feedbackLanguage    String
+  /// Missions: { level, result, headline, reason, skills[], objectivesAchieved, objectivesTotal, missionScore, passed }
+  missionResult       Json?
   evalModel           String
   evalPromptVersion   String
   /// Corrections dropped because they didn't match what the user actually said
@@ -498,6 +513,25 @@ model PracticeRecommendation {
 }
 
 /// Evolves after every analysed conversation (PRD §34); feeds the next conversation's learner layer (PRD §35).
+/// A learner's progress through one mission: which levels are unlocked/passed and their best scores.
+model MissionProgress {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String   @db.Uuid
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scenarioId    String   @db.Uuid
+  scenario      Scenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  /// Highest level the learner may play (starts at 1; passing level N unlocks N+1, up to 5)
+  unlockedLevel Int      @default(1)
+  passedLevels  Int[]    @default([])
+  /// { "1": 85, "2": 70 } — best mission score per level
+  bestScores    Json     @default("{}")
+  attempts      Int      @default(0)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
+
+  @@unique([userId, scenarioId])
+  @@map("mission_progress")
+}
+
 model LearningProfile {
   userId                String   @id @db.Uuid
   user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)

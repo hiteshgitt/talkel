@@ -75,7 +75,7 @@ Related: [VOICE-ARCHITECTURE.md](VOICE-ARCHITECTURE.md) · [AI-ARCHITECTURE.md](
 ## 4. Monorepo layout
 
 ```text
-talkel/                         (repo root; working name SpeakAI)
+talkel/                         (repo root; product name Talkel)
 ├── apps/
 │   ├── api/                    NestJS — src/main.ts (http) + src/worker.ts (queues)
 │   ├── web/                    Next.js 16 App Router — (dashboard) + /admin
