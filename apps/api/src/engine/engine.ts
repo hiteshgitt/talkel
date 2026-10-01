@@ -14,6 +14,8 @@ import {
   LIVE_CORRECTION,
   NO_CORRECTION,
   PRESSURE,
+  REPLAY,
+  replayOpeningCue,
   SAFETY,
   TOOLS_GUIDANCE,
   TURN_TAKING,
@@ -59,6 +61,10 @@ export interface PrepareInput {
   rng?: Rng;
   /** Casual situations used recently by this user, to avoid repeats. */
   recentSituations?: readonly string[];
+  /** Replays: reuse the original conversation's situation instead of rolling a new one… */
+  fixedState?: { values: Record<string, string | number>; hidden: readonly string[] };
+  /** …and ask this question (the AI's line before the replayed answer). */
+  replayQuestion?: string;
 }
 
 export interface PreparedConversation {
@@ -75,6 +81,8 @@ export interface PreparedConversation {
   wrapUpCue: string;
   tools: ToolDeclaration[];
   turnTaking: (typeof TURN_TAKING)[EnglishLevel];
+  /** When the AI may end the call: normal conversations need ~45 s and two answers; replays just one answer. */
+  endPolicy: 'conversation' | 'single_answer';
 }
 
 const Goals = z.array(z.object({ id: z.string().regex(/^[a-z_]+$/), description: z.string(), label: z.string().optional() }));
@@ -83,7 +91,8 @@ export function prepareConversation(input: PrepareInput): PreparedConversation {
   const rng = input.rng ?? Math.random;
   const now = input.now ?? new Date();
   const kind = input.scenario.kind as ScenarioKind;
-  const rolled = rollScenarioState(kind, input.scenario.params, rng, { avoidSituations: input.recentSituations });
+  const rolled = input.fixedState ?? rollScenarioState(kind, input.scenario.params, rng, { avoidSituations: input.recentSituations });
+  const replay = input.replayQuestion !== undefined;
   const goals = Goals.parse(input.scenario.goals);
   const render = (t: string) => renderTemplate(t, rolled.values);
 
@@ -97,8 +106,9 @@ export function prepareConversation(input: PrepareInput): PreparedConversation {
     ACCENT[input.accent],
     DIFFICULTY[input.difficulty],
     input.missionLevel ? PRESSURE[Math.min(5, Math.max(1, input.missionLevel)) as 1 | 2 | 3 | 4 | 5] : null,
-    learnerLayer(input.learnerGoals, input.learnerWeakSpots),
+    replay ? null : learnerLayer(input.learnerGoals, input.learnerWeakSpots),
     TOOLS_GUIDANCE,
+    replay ? REPLAY : null,
   ]
     .filter((s): s is string => Boolean(s))
     .join('\n\n');
@@ -112,6 +122,7 @@ export function prepareConversation(input: PrepareInput): PreparedConversation {
       scenarioVersion: input.scenario.version,
       personaId: input.persona.id,
       personaVersion: input.persona.version,
+      ...(replay ? { replay: LAYER_VERSIONS.replay } : {}),
     },
     scenarioState: rolled.values,
     hiddenKeys: rolled.hidden,
@@ -121,11 +132,13 @@ export function prepareConversation(input: PrepareInput): PreparedConversation {
       userRole: render(input.scenario.userRole),
       objective: render(input.scenario.objective),
     },
-    goals,
-    openingCue: openingCue(kind, rolled.values, { rng, now, timeZone: input.timeZone }),
-    wrapUpCue: WRAP_UP_CUE,
+    goals: replay ? [] : goals,
+    openingCue: replay ? replayOpeningCue(input.replayQuestion!) : openingCue(kind, rolled.values, { rng, now, timeZone: input.timeZone }),
+    // A replay is a single answer: no "wrap up" nudge.
+    wrapUpCue: replay ? '' : WRAP_UP_CUE,
     tools: toolsFor(kind),
     turnTaking: TURN_TAKING[input.difficulty],
+    endPolicy: replay ? 'single_answer' : 'conversation',
   };
 }
 

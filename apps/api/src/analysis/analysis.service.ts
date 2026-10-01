@@ -1,11 +1,21 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { EnglishLevel, FeedbackLanguage, MISSION_LEVELS, type MissionResult, type SkillKey } from '@speakai/contracts';
+import { EnglishLevel, FeedbackLanguage, MISSION_LEVELS, type MissionResult, type ReplayResult, type SkillKey } from '@speakai/contracts';
 import type { Prisma, PrismaClient } from '@speakai/db';
 import { z } from 'zod';
 import { ENV, type Env } from '../config/env.js';
 import { PRISMA } from '../db/prisma.module.js';
 import { renderTemplate } from '../engine/scenario-kinds.js';
-import { buildEvaluationPrompt, clampEvaluation, EVAL_PROMPT_VERSION, EvaluationOutput, evaluationJsonSchema } from './evaluation.js';
+import {
+  buildEvaluationPrompt,
+  buildReplayPrompt,
+  clampEvaluation,
+  clampReplayEvaluation,
+  EVAL_PROMPT_VERSION,
+  EvaluationOutput,
+  evaluationJsonSchema,
+  ReplayEvaluationOutput,
+  replayEvaluationJsonSchema,
+} from './evaluation.js';
 import { generateStructured } from './gemini-text.js';
 import { bandToScore, groundErrors, groundQuoted, overallScore } from './grounding.js';
 import { LearningProfileService } from './learning-profile.service.js';
@@ -16,6 +26,9 @@ import { applyAttempt, isPassed, MissionSpec, missionScore } from '../missions/m
 const MIN_USER_WORDS = 8;
 const StoredState = z.object({ values: z.record(z.string(), z.union([z.string(), z.number()])) });
 const Goals = z.array(z.object({ id: z.string(), description: z.string() }));
+const ReplayContext = z.object({ question: z.string(), originalAnswer: z.string() });
+/** A replay answer shorter than this is not worth comparing. */
+const MIN_REPLAY_WORDS = 3;
 const LiveMetrics = z.object({ userSpeakingMs: z.number(), responseLatenciesMs: z.array(z.number()) });
 
 export class RetryableAnalysisError extends Error {}
@@ -46,6 +59,7 @@ export class AnalysisService {
       },
     });
     if (!session) return 'GONE'; // deleted meanwhile
+    if (session.replayOfId) return this.analyseReplay(session);
     if (session.analysis) return 'ALREADY_DONE';
 
     const userTurns = session.turns.filter((t) => t.speaker === 'USER');
@@ -198,6 +212,77 @@ export class AnalysisService {
     });
 
     this.logger.log(`analysed ${sessionId} with ${result.model}: ${grammarErrors.length} corrections, ${phrasing.length} phrasing, ${moments.length} moments (${dropped} dropped), goals=${achieved.join(',') || '-'}`);
+    return 'COMPLETED';
+  }
+
+  /** Replays: compare the new answer with the original one. Never touches the learning profile or missions. */
+  private async analyseReplay(session: {
+    id: string;
+    userId: string;
+    difficulty: string;
+    replayResult: unknown;
+    replayContext: unknown;
+    scenarioState: unknown;
+    turns: Array<{ speaker: string; text: string }>;
+    scenarioVersion: { title: string; userRole: string; objective: string; briefing: string };
+    user: { settings: { feedbackLanguage: string } | null };
+  }): Promise<'COMPLETED' | 'SKIPPED' | 'ALREADY_DONE'> {
+    if (session.replayResult) return 'ALREADY_DONE';
+    const ctx = ReplayContext.parse(session.replayContext);
+    const secondAnswer = session.turns.filter((t) => t.speaker === 'USER').map((t) => t.text.trim()).filter(Boolean).join(' ');
+    if (secondAnswer.split(/\s+/).filter(Boolean).length < MIN_REPLAY_WORDS) {
+      await this.prisma.conversationSession.update({ where: { id: session.id }, data: { analysisStatus: 'SKIPPED' } });
+      return 'SKIPPED';
+    }
+    await this.prisma.conversationSession.update({ where: { id: session.id }, data: { analysisStatus: 'PROCESSING' } });
+    const state = StoredState.parse(session.scenarioState).values;
+    const render = (t: string) => renderTemplate(t, state);
+    const v = session.scenarioVersion;
+    const result = await generateStructured(
+      { apiKey: this.env.GEMINI_API_KEY ?? '', baseUrl: this.env.GEMINI_API_BASE, models: this.env.EVAL_MODELS.split(',').map((m) => m.trim()).filter(Boolean) },
+      buildReplayPrompt({
+        scenario: { title: v.title, userRole: render(v.userRole), objective: render(v.objective), briefing: render(v.briefing) },
+        level: EnglishLevel.catch('INTERMEDIATE').parse(session.difficulty),
+        feedbackLanguage: FeedbackLanguage.catch('en').parse(session.user.settings?.feedbackLanguage),
+        question: ctx.question,
+        firstAnswer: ctx.originalAnswer,
+        secondAnswer,
+      }),
+      replayEvaluationJsonSchema,
+    );
+    let raw: unknown;
+    try {
+      raw = JSON.parse(result.text);
+    } catch {
+      throw new RetryableAnalysisError(`replay evaluation returned invalid JSON (${result.model})`);
+    }
+    const parsed = ReplayEvaluationOutput.safeParse(clampReplayEvaluation(raw));
+    if (!parsed.success) throw new RetryableAnalysisError(`replay evaluation failed validation (${result.model})`);
+    const out = parsed.data;
+    const replayResult: ReplayResult = {
+      firstScore: bandToScore(out.first.band),
+      secondScore: bandToScore(out.second.band),
+      firstComment: out.first.comment,
+      secondComment: out.second.comment,
+      improved: out.improved,
+      stillToWork: out.stillToWork,
+      betterAnswer: out.betterAnswer,
+    };
+    await this.prisma.$transaction([
+      this.prisma.conversationSession.update({ where: { id: session.id }, data: { analysisStatus: 'COMPLETED', replayResult } }),
+      this.prisma.usageRecord.create({
+        data: {
+          userId: session.userId,
+          sessionId: session.id,
+          kind: 'EVALUATION',
+          provider: 'gemini',
+          model: result.model,
+          inputTextTokens: result.usage.inputTokens,
+          outputTextTokens: result.usage.outputTokens,
+        },
+      }),
+    ]);
+    this.logger.log(`replay ${session.id} compared with ${result.model}: ${replayResult.firstScore} → ${replayResult.secondScore}`);
     return 'COMPLETED';
   }
 

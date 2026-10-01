@@ -8,6 +8,7 @@ import {
   CreateConversationRequest,
   type CreateConversationResponse,
   type Quota,
+  ReplayRequest,
 } from '@speakai/contracts';
 import { z } from 'zod';
 import { AllowDevToken, CurrentUser, type SessionUser } from '../auth/auth.decorators.js';
@@ -77,6 +78,13 @@ export class ConversationsController {
   @HttpCode(202)
   retryFeedback(@CurrentUser() user: SessionUser, @Param('id') id: string): Promise<void> {
     return this.conversations.retryFeedback(user.id, id);
+  }
+
+  /** "Try that answer again": a short replay call of the question before the user's turn `turnSeq`. */
+  @Post('conversations/:id/replay')
+  @HttpCode(201)
+  replay(@CurrentUser() user: SessionUser, @Param('id') id: string, @Body() body: unknown): Promise<CreateConversationResponse> {
+    return this.conversations.replay(user.id, id, parseBody(ReplayRequest, body).turnSeq);
   }
 
   /** Start/stop recording the live call (both voices). */

@@ -93,6 +93,8 @@ Allowed only when status ∈ {CREATED, RECONNECTING} and within TTL. Errors: `SE
 | Method | Path | Response |
 |---|---|---|
 | GET | `/progress` | Totals, smoothed skill scores (incl. clarity), per-conversation history (last 20), streak + 28-day practice calendar (user's time zone), confidence indicators (recent 3 vs previous 3 conversations), common mistakes with trend, fillers, recent corrections |
+| GET | `/missions` | Missions (objectives, AI character, skills — never prompts, secrets or outcome rules) with the user's level progress |
+| POST | `/conversations/:id/replay` | `{ turnSeq }` → a short replay call of the question before that user line (CreateConversationResponse); the comparison appears on the replay's detail as `replay` |
 | GET | `/progress/mistakes/:category` | The user's corrections of one mistake type (newest first, max 50) |
 | GET | `/mistakes?category&cursor` | Grammar errors across sessions, grouped by category with counts |
 | GET | `/vocabulary?kind&cursor` | Vocabulary items across sessions |

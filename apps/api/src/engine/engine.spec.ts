@@ -169,3 +169,30 @@ describe('missions in the engine', () => {
     }
   });
 });
+
+describe('replays in the engine', () => {
+  it('reuses the original situation, asks the given question, and allows ending after one answer', () => {
+    const bargaining = SCENARIOS.find((x) => x.slug === 'bargaining')!;
+    const fixed = { values: { item: 'a kite', place: 'a fair', askPrice: 500, floorPrice: 300, userBudget: 350, askPriceText: '₹500', floorPriceText: '₹300', userBudgetText: '₹350', currentOffer: 450 }, hidden: ['floorPrice', 'floorPriceText'] };
+    const prepared = prepareConversation({
+      scenario: { id: 's', version: 1, ...bargaining },
+      persona: { id: 'p', version: 1, name: 'Arjun', promptFragment: '' },
+      difficulty: 'INTERMEDIATE',
+      accent: 'INDIAN',
+      liveCorrection: false,
+      learnerGoals: ['job_interviews'],
+      learnerWeakSpots: ['VERB_TENSE'],
+      timeZone: 'Asia/Kolkata',
+      fixedState: fixed,
+      replayQuestion: 'Final price, "₹450", okay?',
+    });
+    expect(prepared.scenarioState).toEqual(fixed.values); // same jacket, same prices
+    expect(prepared.instructions).toContain('a kite');
+    expect(prepared.instructions).toContain('quick replay of one moment');
+    expect(prepared.instructions).not.toContain('chances to practise'); // no learner layer in a one-question replay
+    expect(prepared.openingCue).toContain("Final price, '₹450', okay?");
+    expect(prepared.wrapUpCue).toBe('');
+    expect(prepared.endPolicy).toBe('single_answer');
+    expect(prepared.goals).toEqual([]);
+  });
+});

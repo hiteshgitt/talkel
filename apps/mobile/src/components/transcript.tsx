@@ -1,9 +1,10 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import type { ConversationDetail, Feedback } from '@speakai/contracts';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MOMENT_NAME } from '@/components/feedback';
 import { segment } from '@/lib/highlight';
-import { makeStyles, radius } from '@/theme';
+import { makeStyles, radius, useColors } from '@/theme';
 
 type Turn = ConversationDetail['turns'][number];
 type MarkKind = 'grammar' | 'phrasing';
@@ -19,10 +20,24 @@ function fixesFor(f: Feedback | null, seq: number) {
 
 /**
  * One transcript line. The learner's lines underline what the feedback quotes (red = mistake,
- * amber = could sound more natural); tapping the line shows the fixes right under it.
+ * amber = could sound more natural); tapping the line shows the fixes right under it, and a
+ * "Try this answer again" replay when available.
  */
-export function TranscriptLine({ turn, personaName, feedback }: { turn: Turn; personaName: string; feedback: Feedback | null }) {
+export function TranscriptLine({
+  turn,
+  personaName,
+  feedback,
+  onReplay,
+  replaying,
+}: {
+  turn: Turn;
+  personaName: string;
+  feedback: Feedback | null;
+  onReplay?: () => void;
+  replaying?: boolean;
+}) {
   const styles = useStyles();
+  const c = useColors();
   const [open, setOpen] = useState(false);
   const isUser = turn.speaker === 'USER';
   const fixes = fixesFor(isUser ? feedback : null, turn.seq);
@@ -35,15 +50,19 @@ export function TranscriptLine({ turn, personaName, feedback }: { turn: Turn; pe
 
   return (
     <Pressable
-      disabled={count === 0}
+      disabled={count === 0 && !onReplay}
       onPress={() => setOpen((o) => !o)}
-      accessibilityRole={count ? 'button' : undefined}
-      accessibilityHint={count ? 'Shows the fixes for this line' : undefined}
+      accessibilityRole={count || onReplay ? 'button' : undefined}
+      accessibilityHint={count ? 'Shows the fixes for this line' : onReplay ? 'Shows the option to answer again' : undefined}
       style={[styles.bubble, isUser ? styles.user : styles.ai, count > 0 && styles.flagged]}
     >
       <View style={styles.head}>
         <Text style={styles.speaker}>{isUser ? 'You' : personaName}</Text>
-        {count ? <Text style={styles.badge}>{open ? 'hide' : `${count} ${count === 1 ? 'tip' : 'tips'} · tap`}</Text> : null}
+        {count ? (
+          <Text style={styles.badge}>{open ? 'hide' : `${count} ${count === 1 ? 'tip' : 'tips'} · tap`}</Text>
+        ) : onReplay && !open ? (
+          <Ionicons name="refresh" size={14} color={c.textFaint} />
+        ) : null}
       </View>
       <Text style={styles.text}>
         {segments.map((s, i) =>
@@ -79,6 +98,17 @@ export function TranscriptLine({ turn, personaName, feedback }: { turn: Turn; pe
               <Text style={styles.fixWhy}>{m.why}</Text>
             </View>
           ))}
+          {onReplay ? (
+            <Pressable
+              onPress={onReplay}
+              disabled={replaying}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.replay, (pressed || replaying) && styles.pressed]}
+            >
+              <Ionicons name="refresh-circle" size={20} color={c.accent} />
+              <Text style={styles.replayText}>{replaying ? 'Starting…' : 'Try this answer again'}</Text>
+            </Pressable>
+          ) : null}
         </View>
       ) : null}
     </Pressable>
@@ -102,6 +132,9 @@ const useStyles = makeStyles((c) =>
     fix: { gap: 2 },
     fixRight: { color: c.success, fontSize: 15, fontWeight: '700' },
     fixWhy: { color: c.textMuted, fontSize: 13, lineHeight: 18 },
+    replay: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', backgroundColor: c.surface, borderRadius: radius.pill, paddingVertical: 7, paddingHorizontal: 12 },
+    replayText: { color: c.accent, fontSize: 14, fontWeight: '700' },
+    pressed: { opacity: 0.6 },
     momentKind: { color: c.warning, fontSize: 12, fontWeight: '800' },
   }),
 );

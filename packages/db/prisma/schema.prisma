@@ -277,22 +277,22 @@ enum Speaker {
 }
 
 model ConversationSession {
-  id                  String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId              String          @db.Uuid
-  user                User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  scenarioVersionId   String          @db.Uuid
-  scenarioVersion     ScenarioVersion @relation(fields: [scenarioVersionId], references: [id])
-  personaId           String          @db.Uuid
-  persona             Persona         @relation(fields: [personaId], references: [id])
+  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId              String                @db.Uuid
+  user                User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scenarioVersionId   String                @db.Uuid
+  scenarioVersion     ScenarioVersion       @relation(fields: [scenarioVersionId], references: [id])
+  personaId           String                @db.Uuid
+  persona             Persona               @relation(fields: [personaId], references: [id])
   difficulty          EnglishLevel
-  liveCorrection      Boolean         @default(false)
+  liveCorrection      Boolean               @default(false)
   /// AMERICAN | BRITISH | INDIAN | AUSTRALIAN — best-effort accent hint for the AI voice
-  accent              String          @default("INDIAN")
+  accent              String                @default("INDIAN")
   plannedDurationSec  Int
-  status              SessionStatus   @default(CREATED)
+  status              SessionStatus         @default(CREATED)
   endReason           EndReason?
-  startedAt           DateTime?       @db.Timestamptz(3)
-  endedAt             DateTime?       @db.Timestamptz(3)
+  startedAt           DateTime?             @db.Timestamptz(3)
+  endedAt             DateTime?             @db.Timestamptz(3)
   durationMs          Int?
   /// Reproducibility (PRD §78): provider/model, prompt layer versions, persona version
   provider            String
@@ -301,20 +301,29 @@ model ConversationSession {
   instructionsHash    String
   /// Randomised per session (topic, item, prices…) plus live updates from tools
   scenarioState       Json
-  goalsAchieved       String[]        @default([])
+  goalsAchieved       String[]              @default([])
   /// Optional user-started call recording (both voices, Ogg Opus): key in the recordings store
   recordingKey        String?
   recordingDurationMs Int?
   recordingBytes      Int?
   /// After-call feedback (Milestone 3)
-  analysisStatus      AnalysisStatus  @default(PENDING)
+  analysisStatus      AnalysisStatus        @default(PENDING)
   /// Missions: the pressure level (1–5) this attempt was played at; null for practice conversations
   missionLevel        Int?
+  /// Replays ("try that answer again"): the conversation and user turn being replayed. Replays stay out of History.
+  replayOfId          String?               @db.Uuid
+  replayOf            ConversationSession?  @relation("Replays", fields: [replayOfId], references: [id], onDelete: Cascade)
+  replays             ConversationSession[] @relation("Replays")
+  replayTurnSeq       Int?
+  /// { question, originalAnswer } captured when the replay is created
+  replayContext       Json?
+  /// The comparison of both answers (see ReplayResult in contracts)
+  replayResult        Json?
   /// Measured live: total user speech time and timing metrics (latencies, long pauses)
   userSpeakingMs      Int?
   liveMetrics         Json?
-  createdAt           DateTime        @default(now()) @db.Timestamptz(3)
-  updatedAt           DateTime        @updatedAt @db.Timestamptz(3)
+  createdAt           DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime              @updatedAt @db.Timestamptz(3)
 
   turns    ConversationTurn[]
   events   ConversationEvent[]

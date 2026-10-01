@@ -35,7 +35,10 @@ export interface LiveConversationDeps {
   log: CallEventLog;
   maxDurationMs: number;
   openingCue: string;
+  /** Sent ~1 minute before the time limit; empty = none (replays). */
   wrapUpCue: string;
+  /** 'single_answer' lets the AI end right after the user's first answer (replays). */
+  endPolicy?: 'conversation' | 'single_answer';
   handleTool: (name: string, args: unknown) => ToolOutcome;
   onFlush?: (s: LiveSnapshot) => void;
   onStatus?: (status: LiveStatus) => void;
@@ -127,6 +130,7 @@ export class LiveConversation {
     const wrapAt = maxDurationMs >= 2 * WRAP_UP_LEAD_MS ? maxDurationMs - WRAP_UP_LEAD_MS : maxDurationMs / 2;
     this.timers.push(
       setTimeout(() => {
+        if (!this.deps.wrapUpCue) return;
         this.cue(this.deps.wrapUpCue, false);
         this.media.sendControl({ type: 'time_warning', secondsRemaining: Math.round((maxDurationMs - wrapAt) / 1000) });
         this.deps.onEvent?.('WRAP_UP', this.elapsedMs());
@@ -341,6 +345,7 @@ export class LiveConversation {
 
   private mayAiEndNow(): boolean {
     const userTurns = this.transcript.turns().filter((x) => x.speaker === 'USER').length;
+    if (this.deps.endPolicy === 'single_answer') return userTurns >= 1;
     return this.elapsedMs() >= MIN_CALL_MS_BEFORE_AI_END && userTurns >= MIN_USER_TURNS_BEFORE_AI_END;
   }
 

@@ -509,6 +509,23 @@ export const MistakeList = z.object({
 });
 export type MistakeList = z.infer<typeof MistakeList>;
 
+// ───────────── Replays ("try that answer again") ─────────────
+
+export const ReplayRequest = z.object({ turnSeq: z.number().int().nonnegative() });
+export type ReplayRequest = z.infer<typeof ReplayRequest>;
+
+/** Both attempts at the same moment, compared (scores on the usual 0–100 band scale). */
+export const ReplayResult = z.object({
+  firstScore: z.number().int(),
+  secondScore: z.number().int(),
+  firstComment: z.string(),
+  secondComment: z.string(),
+  improved: z.string(),
+  stillToWork: z.string(),
+  betterAnswer: z.string(),
+});
+export type ReplayResult = z.infer<typeof ReplayResult>;
+
 export const ConversationDetail = ConversationSummary.extend({
   accent: Accent,
   analysisStatus: AnalysisStatus,
@@ -518,6 +535,17 @@ export const ConversationDetail = ConversationSummary.extend({
   goals: z.array(z.object({ id: z.string(), description: z.string(), achieved: z.boolean() })),
   /** Missions: the mission's id (to retry or go to the next level). */
   missionId: z.string().nullable(),
+  /** Replays only: which moment was replayed, both answers and their comparison (null while it is prepared). */
+  replay: z
+    .object({
+      originalId: z.string(),
+      turnSeq: z.number().int(),
+      question: z.string(),
+      originalAnswer: z.string(),
+      newAnswer: z.string().nullable(),
+      result: ReplayResult.nullable(),
+    })
+    .nullable(),
   turns: z.array(TranscriptTurn),
 });
 export type ConversationDetail = z.infer<typeof ConversationDetail>;

@@ -12,6 +12,7 @@ import {
   type ConnectRequest,
   type ConnectResponse,
   type ConversationDetail,
+  ReplayResult,
   type ConversationList,
   type CreateConversationRequest,
   type CreateConversationResponse,
@@ -55,6 +56,9 @@ const StoredState = z.object({
   hidden: z.array(z.string()),
 });
 const StoredGoals = z.array(z.object({ id: z.string(), description: z.string(), label: z.string().optional() }));
+const StoredReplayState = z.object({ values: z.record(z.string(), z.union([z.string(), z.number()])), hidden: z.array(z.string()).default([]) });
+/** A replay is one question and one answer. */
+const REPLAY_MAX_SEC = 120;
 const PersonaVoices = z.object({ gemini: z.string(), openai: z.string().optional() });
 
 interface Pending {
@@ -198,6 +202,91 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
     };
   }
 
+  /**
+   * "Try that answer again": a short call where the same partner, in the same situation, asks the
+   * question before the user's turn `turnSeq` again. Compared with the first answer afterwards.
+   */
+  async replay(userId: string, originalId: string, turnSeq: number): Promise<CreateConversationResponse> {
+    const original = await this.owned(userId, originalId);
+    if (original.replayOfId) throw problem(HttpStatus.BAD_REQUEST, 'NOT_REPLAYABLE', 'Replay a moment from the original conversation');
+    if (original.status !== 'ENDED') throw problem(HttpStatus.CONFLICT, 'CONVERSATION_NOT_ENDED', 'You can replay a moment once the conversation has ended');
+
+    const turns = await this.prisma.conversationTurn.findMany({ where: { sessionId: originalId }, orderBy: { seq: 'asc' } });
+    const index = turns.findIndex((t) => t.seq === turnSeq);
+    const answer = turns[index];
+    const question = [...turns.slice(0, Math.max(0, index))].reverse().find((t) => t.speaker === 'AI' && t.text.trim());
+    if (!answer || answer.speaker !== 'USER' || !answer.text.trim() || !question) {
+      throw problem(HttpStatus.BAD_REQUEST, 'NOT_REPLAYABLE', 'This line can’t be replayed');
+    }
+
+    const [version, persona, user] = await Promise.all([
+      this.prisma.scenarioVersion.findUniqueOrThrow({ where: { id: original.scenarioVersionId }, include: { scenario: { select: { slug: true } } } }),
+      this.prisma.persona.findUniqueOrThrow({ where: { id: original.personaId } }),
+      this.prisma.user.findUniqueOrThrow({ where: { id: userId }, include: { profile: true } }),
+    ]);
+
+    await this.ensureNoActiveConversation(userId);
+    const quota = await this.quota.forUser(userId);
+    if (quota.remainingSec < MIN_REMAINING_TO_START_SEC) {
+      throw problem(HttpStatus.PAYMENT_REQUIRED, 'QUOTA_EXCEEDED', 'You’ve used today’s free practice time');
+    }
+    const durationSec = Math.min(REPLAY_MAX_SEC, quota.remainingSec);
+    const state = StoredReplayState.parse(original.scenarioState);
+    const difficulty = EnglishLevel.catch('INTERMEDIATE').parse(original.difficulty);
+    const accent = Accent.catch('INDIAN').parse(original.accent);
+
+    const prepared = prepareConversation({
+      scenario: version,
+      persona: { id: persona.id, version: persona.version, name: persona.name, promptFragment: persona.promptFragment },
+      difficulty,
+      accent,
+      liveCorrection: false,
+      learnerGoals: [],
+      // Same pressure as the original mission attempt, but a replay never counts as a mission attempt.
+      missionLevel: original.missionLevel,
+      timeZone: user.profile?.timezone ?? 'Asia/Kolkata',
+      fixedState: state,
+      replayQuestion: question.text,
+    });
+
+    const session = await this.prisma.conversationSession.create({
+      data: {
+        userId,
+        scenarioVersionId: version.id,
+        personaId: persona.id,
+        difficulty,
+        accent,
+        liveCorrection: false,
+        plannedDurationSec: durationSec,
+        provider: 'gemini',
+        model: this.env.GEMINI_LIVE_MODEL,
+        promptVersions: prepared.promptVersions,
+        instructionsHash: prepared.instructionsHash,
+        scenarioState: { values: prepared.scenarioState, hidden: [...prepared.hiddenKeys] },
+        replayOfId: originalId,
+        replayTurnSeq: turnSeq,
+        replayContext: { question: question.text, originalAnswer: answer.text },
+      },
+    });
+    this.pending.set(session.id, {
+      userId,
+      prepared,
+      voiceName: PersonaVoices.parse(persona.voices).gemini,
+      expiresAt: Date.now() + CONNECT_WINDOW_MS,
+    });
+
+    return {
+      id: session.id,
+      scenarioSlug: version.scenario.slug,
+      brief: { ...prepared.brief, title: `Try again: ${version.title}` },
+      persona: { id: persona.id, slug: persona.slug, name: persona.name, gender: VoiceGender.parse(persona.gender), description: persona.description },
+      accent,
+      difficulty,
+      durationSec,
+      mission: null,
+    };
+  }
+
   async connect(userId: string, id: string, req: ConnectRequest): Promise<ConnectResponse> {
     const session = await this.owned(userId, id);
 
@@ -257,6 +346,7 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
       maxDurationMs: durationSec * 1000,
       openingCue: prepared.openingCue,
       wrapUpCue: prepared.wrapUpCue,
+      endPolicy: prepared.endPolicy,
       handleTool: (name, args) => {
         const outcome = handleToolCall(name, args, { values: run.values, goalIds: run.goalIds, goalsAchieved: run.convo.goalsAchieved });
         if (outcome.stateChanges) Object.assign(run.values, outcome.stateChanges);
@@ -367,7 +457,8 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
 
   async list(userId: string, cursor: string | undefined, limit = 20): Promise<ConversationList> {
     const rows = await this.prisma.conversationSession.findMany({
-      where: { userId, status: { notIn: ['CREATED', 'EXPIRED'] } },
+      // Replays belong to their conversation, not to History.
+      where: { userId, status: { notIn: ['CREATED', 'EXPIRED'] }, replayOfId: null },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
@@ -432,7 +523,8 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
       turnCount: turns.length,
       overallScore: s.analysis?.overallScore ?? null,
       missionLevel: s.missionLevel,
-      missionId: s.missionLevel !== null ? s.scenarioVersion.scenarioId : null,
+      missionId: s.missionLevel !== null && !s.replayOfId ? s.scenarioVersion.scenarioId : null,
+      replay: s.replayOfId ? replayView(s.replayOfId, s.replayTurnSeq ?? 0, s.replayContext, s.replayResult, turns) : null,
       accent: Accent.catch('INDIAN').parse(s.accent),
       analysisStatus: AnalysisStatusSchema.parse(s.analysisStatus),
       feedback: s.analysis ? toFeedback(s.analysis) : null,
@@ -648,6 +740,27 @@ type AnalysisRow = Prisma.SessionAnalysisGetPayload<{
 }>;
 
 /** DB rows → the Feedback contract (validated, so a bad row can't reach the app). */
+const ReplayContext = z.object({ question: z.string(), originalAnswer: z.string() });
+
+function replayView(
+  originalId: string,
+  turnSeq: number,
+  context: unknown,
+  result: unknown,
+  turns: ReadonlyArray<{ speaker: string; text: string }>,
+): NonNullable<ConversationDetail['replay']> {
+  const ctx = ReplayContext.catch({ question: '', originalAnswer: '' }).parse(context);
+  const answer = turns.filter((t) => t.speaker === 'USER').map((t) => t.text.trim()).filter(Boolean).join(' ');
+  return {
+    originalId,
+    turnSeq,
+    question: ctx.question,
+    originalAnswer: ctx.originalAnswer,
+    newAnswer: answer || null,
+    result: ReplayResult.nullable().catch(null).parse(result ?? null),
+  };
+}
+
 function toFeedback(a: AnalysisRow): Feedback {
   const f = a.fluency;
   return Feedback.parse({

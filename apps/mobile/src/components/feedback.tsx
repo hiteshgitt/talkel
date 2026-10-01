@@ -44,6 +44,7 @@ const T = {
     momentsHint: 'Replies you could handle better next time.',
     youSaid: 'You said',
     tryInstead: 'Try',
+    tryAgain: 'Try this moment again',
     transcriptHint: 'Mistakes are underlined in the transcript below. Tap your line to see the fixes.',
   },
   hi: {
@@ -77,6 +78,7 @@ const T = {
     momentsHint: 'ऐसे जवाब जिन्हें अगली बार बेहतर कर सकते हैं।',
     youSaid: 'आपने कहा',
     tryInstead: 'ऐसे कहें',
+    tryAgain: 'यह पल फिर से आज़माएँ',
     transcriptHint: 'नीचे ट्रांसक्रिप्ट में गलतियाँ रेखांकित हैं। सुधार देखने के लिए अपनी लाइन पर टैप करें।',
   },
 } as const;
@@ -118,7 +120,20 @@ export function scoreColor(score: number, c: Palette): string {
   return score >= 75 ? c.success : score >= 55 ? c.accent : c.warning;
 }
 
-export function FeedbackSection({ c, lang, onRetry, retrying }: { c: ConversationDetail; lang: 'en' | 'hi'; onRetry: () => void; retrying: boolean }) {
+export function FeedbackSection({
+  c,
+  lang,
+  onRetry,
+  retrying,
+  onReplay,
+}: {
+  c: ConversationDetail;
+  lang: 'en' | 'hi';
+  onRetry: () => void;
+  retrying: boolean;
+  /** "Try that answer again" for a user turn; absent when replays aren't possible. */
+  onReplay?: (turnSeq: number) => void;
+}) {
   const styles = useStyles();
   const colors = useColors();
   const t = T[c.feedback?.feedbackLanguage ?? lang];
@@ -157,7 +172,7 @@ export function FeedbackSection({ c, lang, onRetry, retrying }: { c: Conversatio
       </Card>
     );
   }
-  return <FeedbackView f={c.feedback} goals={c.goals} missionId={c.missionId} />;
+  return <FeedbackView f={c.feedback} goals={c.goals} missionId={c.missionId} onReplay={onReplay} />;
 }
 
 /** Card heading: coloured icon badge, title and optional count. */
@@ -182,7 +197,17 @@ function Item({ icon, color, children }: { icon: IconName; color: string; childr
   );
 }
 
-function FeedbackView({ f, goals, missionId }: { f: Feedback; goals: ConversationDetail['goals']; missionId: string | null }) {
+function FeedbackView({
+  f,
+  goals,
+  missionId,
+  onReplay,
+}: {
+  f: Feedback;
+  goals: ConversationDetail['goals'];
+  missionId: string | null;
+  onReplay?: (turnSeq: number) => void;
+}) {
   const styles = useStyles();
   const c = useColors();
   const t = T[f.feedbackLanguage];
@@ -303,6 +328,12 @@ function FeedbackView({ f, goals, missionId }: { f: Feedback; goals: Conversatio
                 <Text style={[styles.right, styles.flex]}>“{m.better}”</Text>
               </View>
               <Text style={styles.muted}>{m.why}</Text>
+              {onReplay ? (
+                <Pressable onPress={() => onReplay(m.turnSeq)} accessibilityRole="button" style={({ pressed }) => [styles.tryAgain, pressed && styles.pressed]}>
+                  <Ionicons name="refresh-circle" size={20} color={c.accent} />
+                  <Text style={styles.tryAgainText}>{t.tryAgain}</Text>
+                </Pressable>
+              ) : null}
             </View>
           ))}
         </Card>
@@ -439,5 +470,7 @@ const useStyles = makeStyles((c) =>
     recButton: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: c.accentSoft, borderRadius: radius.md, padding: 8, paddingRight: 12, marginTop: 6 },
     recButtonText: { color: c.accent, fontSize: 15, fontWeight: '700', flex: 1 },
     pressed: { opacity: 0.7 },
+    tryAgain: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', backgroundColor: c.accentSoft, borderRadius: radius.pill, paddingVertical: 7, paddingHorizontal: 12, marginTop: 2 },
+    tryAgainText: { color: c.accent, fontSize: 14, fontWeight: '700' },
   }),
 );

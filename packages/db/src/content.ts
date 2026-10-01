@@ -594,5 +594,226 @@ export const MISSIONS: ScenarioSeed[] = [
         'above budget easily or barely negotiated. The headline must state the final price, e.g. "Bought for ₹1,450 (asked ₹2,500)".',
     },
   },
+  {
+    slug: 'mission-angry-manager',
+    type: 'MISSION',
+    category: CHALLENGE,
+    kind: 'roleplay',
+    sortOrder: 7,
+    title: 'Face an Angry Manager',
+    tagline: 'A deadline slipped. Take charge of the conversation.',
+    briefing: '{{project}} is late, and {{impact}}. The real cause: {{cause}}. Your manager has just called you in.',
+    userRole: 'The person responsible for {{project}}',
+    objective: 'Own the problem, explain it briefly, and leave with an agreed recovery plan.',
+    minLevel: 'INTERMEDIATE',
+    estimatedMinutes: 6,
+    promptTemplate:
+      'Scenario: you are the user’s manager. {{project}} is late and {{impact}}; the real cause was {{cause}}. You are ' +
+      'frustrated and want to know who is to blame; your first demand is {{demand}}. Secret: you would accept {{acceptable}}, ' +
+      'but only once the user takes responsibility without making excuses, explains the cause briefly, and proposes a ' +
+      'concrete plan with dates. Interrupt long excuses ("I don’t need the whole story — what are we doing about it?"). Calm ' +
+      'down step by step as they handle it well. Stay professional; never insult them. Close once a plan is agreed.',
+    params: {
+      opening:
+        'Call the user into a quick meeting, clearly annoyed. Say you have just heard that {{project}} is late and {{impact}}, ' +
+        'and ask what happened.',
+      hidden: ['acceptable'],
+      variants: [
+        { project: 'The mobile app release', impact: 'the client demo on Friday is at risk', cause: 'a payment provider changed its API without notice', demand: 'the whole team working this weekend', acceptable: 'a recovery plan with a new date and daily updates' },
+        { project: 'The quarterly sales report', impact: 'the board meeting is tomorrow morning', cause: 'data from two regions arrived three days late', demand: 'the full report on their desk tonight', acceptable: 'a summary tonight and the full report by noon tomorrow' },
+        { project: 'The office move to the new building', impact: '200 people may have no desks on Monday', cause: 'the furniture supplier delayed the delivery', demand: 'you fixing it personally by tomorrow', acceptable: 'a temporary seating plan and a confirmed delivery date' },
+      ],
+    },
+    goals: [
+      { id: 'owned_problem', label: 'Take responsibility — no excuses', description: 'The user took responsibility instead of blaming others or making excuses' },
+      { id: 'explained_briefly', label: 'Explain the cause in a few sentences', description: 'The user explained the cause briefly and clearly' },
+      { id: 'proposed_plan', label: 'Propose a concrete recovery plan with dates', description: 'The user proposed a concrete plan with dates or steps' },
+      { id: 'stayed_calm', label: 'Stay calm under pressure', description: 'The user stayed calm and professional when the manager pushed' },
+      { id: 'agreed_next_steps', label: 'Agree the next steps', description: 'The conversation ended with agreed next steps' },
+    ],
+    mission: {
+      group: 'challenge',
+      aiCharacter: 'Your manager — frustrated, looking for someone to blame, and short of patience.',
+      skills: ['composure', 'professionalism', 'structure'],
+      outcome:
+        'The manager would accept {{acceptable}}. SUCCESS: the manager calmed down and agreed a recovery plan like that. ' +
+        'PARTIAL: calmer, but no clear plan or dates agreed. FAILED: the user made excuses or blamed others and the manager ' +
+        'stayed angry. Headline examples: "Recovery plan agreed — new date set", "Calmer, but no plan yet".',
+    },
+  },
+  {
+    slug: 'mission-pitch-idea',
+    type: 'MISSION',
+    category: CAREER,
+    kind: 'roleplay',
+    sortOrder: 8,
+    title: 'Pitch Your Idea',
+    tagline: 'Convince a sceptical director in five minutes.',
+    briefing: 'You work at {{company}}. You have five minutes with {{director}} to propose {{idea}}.',
+    userRole: 'An employee pitching an idea',
+    objective: 'Get a "yes" — or at least a trial — for {{idea}}.',
+    minLevel: 'UPPER_INTERMEDIATE',
+    estimatedMinutes: 6,
+    promptTemplate:
+      'Scenario: you are {{director}} at {{company}}. The user is pitching {{idea}}. You are busy and sceptical; your main ' +
+      'worry is {{concern}}. Your objective: protect the budget and avoid risky experiments. Ask what problem it solves, what ' +
+      'it costs, and how success would be measured; push back on {{concern}}. Secret: you would approve {{yes}}, but only if ' +
+      'the user explains the benefit clearly, answers your concern with something concrete, and asks you for a decision. If ' +
+      'they ramble, ask them to get to the point. End with your decision.',
+    params: {
+      opening: 'Greet the user briefly in a businesslike way, say you have about five minutes, and ask what they want to propose.',
+      hidden: ['yes', 'concern'],
+      variants: [
+        { director: 'the director of operations', company: 'a retail chain', idea: 'a WhatsApp ordering service for regular customers', concern: 'cost and extra work for store staff', yes: 'a one-month pilot in two stores' },
+        { director: 'the head of customer support', company: 'a software company', idea: 'a four-day work week trial for the support team', concern: 'slower response times for customers', yes: 'a six-week trial with weekly response-time reports' },
+        { director: 'the HR director', company: 'a large IT services firm', idea: 'a mentoring programme for new joiners', concern: 'the time it takes from senior people', yes: 'a pilot with five volunteer mentors' },
+      ],
+    },
+    goals: [
+      { id: 'clear_problem', label: 'Explain the problem your idea solves', description: 'The user explained clearly what problem the idea solves' },
+      { id: 'gave_benefit', label: 'Give a concrete benefit or number', description: 'The user gave a concrete benefit, example or number' },
+      { id: 'answered_concern', label: 'Answer the director’s main concern', description: 'The user answered the director’s main concern with something concrete' },
+      { id: 'asked_decision', label: 'Ask for a decision or a trial', description: 'The user asked for a decision, approval or a trial' },
+    ],
+    mission: {
+      group: 'career',
+      aiCharacter: 'A busy, sceptical director who protects the budget.',
+      skills: ['persuasion', 'structure', 'composure'],
+      outcome:
+        'The director could approve {{yes}}. SUCCESS: the director approved the idea or that pilot. PARTIAL: interest, but ' +
+        'only "send me a proposal" or "let me think". FAILED: the director said no or the pitch never became clear. Headline ' +
+        'examples: "Pilot approved in two stores", "Asked for a written proposal".',
+    },
+  },
+  {
+    slug: 'mission-flight-cancelled',
+    type: 'MISSION',
+    category: EVERYDAY,
+    kind: 'roleplay',
+    sortOrder: 9,
+    title: 'Rebook a Cancelled Flight',
+    tagline: 'Your flight is cancelled. Get home tonight.',
+    briefing: 'Your {{route}} flight has just been cancelled because of {{reason}}. You must reach home tonight. You go to the airline counter.',
+    userRole: 'A passenger whose flight was cancelled',
+    objective: 'Get on a flight tonight — politely, but without giving up.',
+    minLevel: 'BEGINNER',
+    estimatedMinutes: 5,
+    promptTemplate:
+      'Scenario: you are a busy airline counter agent at the airport, with a long queue. The user’s {{route}} flight was ' +
+      'cancelled because of {{reason}}. Your objective: move the queue quickly — offer {{offer}} first, and say tonight is ' +
+      'fully booked. Secret: you can arrange {{secret}}, but only if the user politely insists, explains why they must travel ' +
+      'tonight, or asks about other flights, routes or airlines. Stay polite and a little rushed. If they are rude, become ' +
+      'formal and stick to the first offer. Close once something is agreed.',
+    params: {
+      opening: 'Apologise briefly that the {{route}} flight is cancelled because of {{reason}}, and offer {{offer}}.',
+      hidden: ['secret'],
+      variants: [
+        { route: 'Mumbai to Delhi', reason: 'a technical problem with the aircraft', offer: 'a seat on tomorrow morning’s 7 am flight', secret: 'a seat on a partner airline’s 9:40 pm flight tonight plus a meal voucher' },
+        { route: 'Bengaluru to Kolkata', reason: 'bad weather', offer: 'a seat on tomorrow afternoon’s flight', secret: 'tonight’s 11 pm flight via Hyderabad plus a meal voucher' },
+        { route: 'Chennai to Pune', reason: 'a crew shortage', offer: 'a seat on tomorrow’s first flight', secret: 'a seat on tonight’s 8:15 pm flight and lounge access while waiting' },
+      ],
+    },
+    goals: [
+      { id: 'explained_urgency', label: 'Explain why you must travel tonight', description: 'The user explained why they needed to travel tonight' },
+      { id: 'asked_alternatives', label: 'Ask about other flights or airlines', description: 'The user asked about other flights, routes or airlines' },
+      { id: 'polite_insistence', label: 'Insist politely', description: 'The user insisted politely instead of accepting the first offer straight away' },
+      { id: 'confirmed_details', label: 'Confirm the new booking details', description: 'The user confirmed the new flight details (time, gate or seat)' },
+    ],
+    mission: {
+      group: 'everyday',
+      aiCharacter: 'A rushed airline agent with a long queue who would rather book you tomorrow.',
+      skills: ['assertiveness', 'politeness', 'persuasion'],
+      outcome:
+        'The agent could arrange {{secret}}. SUCCESS: the passenger got a flight tonight. PARTIAL: something better than the ' +
+        'first offer, but not tonight (or no voucher). FAILED: the passenger accepted {{offer}} without trying. Headline ' +
+        'examples: "Booked on the 9:40 pm flight tonight", "Stuck with tomorrow’s 7 am flight".',
+    },
+  },
+  {
+    slug: 'mission-visa-interview',
+    type: 'MISSION',
+    category: CHALLENGE,
+    kind: 'roleplay',
+    sortOrder: 10,
+    title: 'Pass the Visa Interview',
+    tagline: 'A strict officer. Short questions. One chance.',
+    briefing: 'Your visa interview for {{country}}: {{purpose}} in {{place}}. The officer will decide at the window.',
+    userRole: 'A visa applicant',
+    objective: 'Get your visa approved with clear, honest, confident answers.',
+    minLevel: 'INTERMEDIATE',
+    estimatedMinutes: 5,
+    promptTemplate:
+      'Scenario: you are a visa officer interviewing the user for a visa to {{country}} for {{purpose}} in {{place}}. ' +
+      'Be brief, formal and neutral; ask one short question at a time. Your objective: decide whether to approve. You focus ' +
+      'on {{concerns}}. Approve only if the answers are clear, consistent, concise and address your concerns; long, vague or ' +
+      'memorised-sounding answers make you suspicious — ask a sharp follow-up when that happens. Ask about six to eight ' +
+      'questions, then tell the applicant your decision in one sentence (approved, or refused with a short reason) and end ' +
+      'the interview. This is practice: never give real immigration advice.',
+    params: {
+      opening: 'You are the visa officer behind the window. Say a very short "Good morning" and ask the purpose of their trip to {{country}}.',
+      hidden: [],
+      variants: [
+        { country: 'the United States', purpose: 'a two-year master’s degree in computer science', place: 'a university in Texas', concerns: 'whether they will return to India and how the fees will be paid' },
+        { country: 'the United Kingdom', purpose: 'a one-week business trip for a client workshop', place: 'London', concerns: 'the exact purpose of the trip and their job in India' },
+        { country: 'Canada', purpose: 'a two-week holiday to visit a cousin', place: 'Toronto', concerns: 'their ties to India and who pays for the trip' },
+      ],
+    },
+    goals: [
+      { id: 'clear_purpose', label: 'State the purpose of your trip clearly', description: 'The user stated the purpose of the trip clearly' },
+      { id: 'concise_answers', label: 'Keep answers short and direct', description: 'The user gave short, direct answers' },
+      { id: 'addressed_concerns', label: 'Address the officer’s concerns', description: 'The user addressed the officer’s main concerns (finances, ties, purpose)' },
+      { id: 'consistent', label: 'Stay consistent under follow-ups', description: 'The user’s answers stayed consistent when the officer followed up' },
+    ],
+    mission: {
+      group: 'challenge',
+      aiCharacter: 'A strict, brief visa officer who distrusts long or vague answers.',
+      skills: ['composure', 'structure', 'professionalism'],
+      outcome:
+        'Use the officer’s stated decision. SUCCESS: approved. PARTIAL: the officer asked for more documents or hesitated. ' +
+        'FAILED: refused. Headline examples: "Visa approved", "Asked for more documents", "Refused — answers were unclear".',
+    },
+  },
+  {
+    slug: 'mission-make-a-friend',
+    type: 'MISSION',
+    category: EVERYDAY,
+    kind: 'roleplay',
+    sortOrder: 11,
+    title: 'Make a New Friend',
+    tagline: 'Turn small talk into a real plan to meet again.',
+    briefing: 'You are in {{setting}} with {{person}}. Start a conversation — and see if you can become friends.',
+    userRole: 'Yourself',
+    objective: 'Find things in common and end with a plan to meet again.',
+    minLevel: 'BEGINNER',
+    estimatedMinutes: 5,
+    promptTemplate:
+      'Scenario: you are {{person}}, standing in {{setting}} next to the user. You are friendly but a little reserved: give ' +
+      'short answers at first, and open up as the user asks you questions and shares about themselves. You love ' +
+      '{{interests}}, but only mention it when the conversation gets there. Do not suggest meeting again yourself. Secret: ' +
+      'if the user suggests a plan related to something you both like (for example {{plan}}), agree happily and exchange ' +
+      'numbers. If they only talk about themselves, become politely distant.',
+    params: {
+      opening: 'Smile and say a short, slightly shy hello to the user — then wait for them to start the conversation.',
+      hidden: ['interests', 'plan'],
+      variants: [
+        { setting: 'the lift of your apartment building', person: 'a new neighbour who moved in last week', interests: 'cooking South Indian food and long weekend drives', plan: 'tea at home this weekend' },
+        { setting: 'the office coffee machine', person: 'a colleague from another team', interests: 'badminton and old Bollywood songs', plan: 'a badminton game after work' },
+        { setting: 'a friend’s birthday party', person: 'a guest you have never met', interests: 'trekking and photography', plan: 'a short trek next month' },
+      ],
+    },
+    goals: [
+      { id: 'started_naturally', label: 'Start the conversation naturally', description: 'The user started the conversation in a natural, friendly way' },
+      { id: 'asked_questions', label: 'Ask questions about them', description: 'The user asked questions about the other person' },
+      { id: 'found_common', label: 'Find something in common', description: 'The user found something they have in common' },
+      { id: 'made_plan', label: 'Suggest meeting again', description: 'The user suggested a plan to meet again' },
+    ],
+    mission: {
+      group: 'everyday',
+      aiCharacter: 'A friendly but slightly reserved person who opens up when you show interest.',
+      skills: ['politeness', 'empathy'],
+      outcome:
+        'SUCCESS: they agreed to a plan to meet again. PARTIAL: a warm conversation, but no plan. FAILED: the conversation ' +
+        'stayed stiff or one-sided. Headline examples: "Badminton plan for Thursday", "Nice chat — no plan yet".',
+    },
+  },
 ];
-

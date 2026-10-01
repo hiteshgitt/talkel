@@ -14,6 +14,15 @@ export const FAKE_MISSION = {
   ],
 };
 
+/** The fake's comparison for replays ("try that answer again"). */
+export const FAKE_REPLAY = {
+  first: { band: 2, comment: 'Too blunt.' },
+  second: { band: 4, comment: 'Polite and clear.' },
+  improved: 'You gave a reason this time.',
+  stillToWork: 'Make a counter-offer.',
+  betterAnswer: 'It’s lovely, but it’s a bit over my budget — would you take ₹1,200?',
+};
+
 /** What the fake evaluation model "says". Two corrections are invalid on purpose (grounding must drop them). */
 export const FAKE_EVALUATION = {
   summary: 'Good start.',
@@ -80,7 +89,9 @@ export async function startFakeGemini(): Promise<FakeGemini> {
     req.on('data', (c: Buffer) => (body += c.toString()));
     req.on('end', () => {
       evaluations.push(body);
-      const evaluation = { ...FAKE_EVALUATION, mission: body.includes('MISSION (level') ? FAKE_MISSION : null };
+      const evaluation = body.includes('SECOND ANSWER (replay)')
+        ? FAKE_REPLAY
+        : { ...FAKE_EVALUATION, mission: body.includes('MISSION (level') ? FAKE_MISSION : null };
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(evaluation) }] } }], usageMetadata: { promptTokenCount: 900, candidatesTokenCount: 300 } }));
     });

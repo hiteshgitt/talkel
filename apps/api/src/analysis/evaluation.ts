@@ -238,3 +238,66 @@ ${lines}
 
   return { system, user };
 }
+
+// ───────────── Replays: compare two answers to the same question ─────────────
+
+export const REPLAY_PROMPT_VERSION = 'replay-eval-v1';
+
+const Attempt = z.object({ band: Band, comment: z.string().min(1).max(300) });
+
+export const ReplayEvaluationOutput = z.object({
+  first: Attempt,
+  second: Attempt,
+  improved: z.string().min(1).max(300),
+  stillToWork: z.string().min(1).max(300),
+  betterAnswer: z.string().min(1).max(500),
+});
+export type ReplayEvaluationOutput = z.infer<typeof ReplayEvaluationOutput>;
+
+export const replayEvaluationJsonSchema = withoutSizeLimits(
+  z.toJSONSchema(ReplayEvaluationOutput, { target: 'draft-7', io: 'output' }),
+);
+
+export function clampReplayEvaluation(raw: unknown): unknown {
+  return clampNode(raw, z.toJSONSchema(ReplayEvaluationOutput, { target: 'draft-7', io: 'output' }) as JsonSchemaNode);
+}
+
+export interface ReplayInput {
+  scenario: { title: string; userRole: string; objective: string; briefing: string };
+  level: string;
+  feedbackLanguage: FeedbackLanguage;
+  question: string;
+  firstAnswer: string;
+  secondAnswer: string;
+}
+
+export function buildReplayPrompt(input: ReplayInput): { system: string; user: string } {
+  const system = `
+You are an encouraging, honest English speaking coach for Indian learners. In a spoken role-play the learner answered the
+same question twice: first during the real conversation, then again in a quick replay. Compare the two answers.
+
+Rules:
+- Answers come from speech recognition: ignore punctuation and capitalisation and likely recognition slips.
+- Give each answer a band (1–5) for how effective it is in this situation: relevance, clarity, grammar, natural phrasing
+  and confidence. 1 = hard to follow, 3 = understandable with noticeable issues, 5 = excellent. Be honest: if the second
+  answer is not better, give it the band it deserves and say so kindly.
+- comment: one short sentence per answer with concrete evidence.
+- improved: what got better (or, honestly, that it didn't). stillToWork: one specific thing to work on next.
+- betterAnswer: a natural model answer at the learner's level (1–3 sentences), consistent with what the learner said.
+- Write comments, improved and stillToWork in ${LANGUAGE_NAME[input.feedbackLanguage]}. Keep betterAnswer in English.
+`.trim();
+  const user = `
+SCENARIO: ${input.scenario.title}
+Situation: ${input.scenario.briefing}
+Learner's role: ${input.scenario.userRole}
+Learner's objective: ${input.scenario.objective}
+Learner's level: ${input.level}
+
+QUESTION (asked by the AI partner): ${input.question}
+
+FIRST ANSWER: ${input.firstAnswer}
+
+SECOND ANSWER (replay): ${input.secondAnswer}
+`.trim();
+  return { system, user };
+}

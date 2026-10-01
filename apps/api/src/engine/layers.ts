@@ -13,6 +13,7 @@ export const LAYER_VERSIONS = {
   tools: 'tools-v2',
   accent: 'accent-v1',
   pressure: 'pressure-v1',
+  replay: 'replay-v1',
 } as const;
 
 export const CORE = `
@@ -159,6 +160,21 @@ export const TURN_TAKING: Record<EnglishLevel, { silenceMs: number; endSensitivi
   ADVANCED: { silenceMs: 600, endSensitivity: 'END_SENSITIVITY_HIGH' },
   EXPERT: { silenceMs: 500, endSensitivity: 'END_SENSITIVITY_HIGH' },
 };
+
+/** Replays ("try that answer again"): one question, one answer, one short reaction, then end. */
+export const REPLAY = `
+This call is a quick replay of one moment from an earlier conversation, so the user can try their answer again. Stay in the
+same role and situation as described above. Ask your question (you will be told which), then listen to the user's complete
+answer — let them take their time. When they have finished, give ONE short natural reaction in your role (no new question
+and no comments on their English), say a brief goodbye, and call end_conversation. If they ask you to repeat the question,
+repeat it.`.trim();
+
+export function replayOpeningCue(question: string): string {
+  return (
+    '(Call system: the replay has connected. Ask the user this again, naturally, in your own words but keeping exactly its ' +
+    `meaning: "${question.replace(/"/g, "'")}". At most a couple of words of greeting first. Do not copy these instructions word for word.)`
+  );
+}
 
 export const WRAP_UP_CUE =
   '(Call system note, not spoken by the user: the call must end in about one minute. Start wrapping up naturally now — respond to ' +

@@ -302,10 +302,15 @@ describe('missions', () => {
       'mission-hotel-problem',
       'mission-win-the-debate',
       'mission-bargain',
+      'mission-angry-manager',
+      'mission-pitch-idea',
+      'mission-flight-cancelled',
+      'mission-visa-interview',
+      'mission-make-a-friend',
     ]);
     expect(missions[1]).toMatchObject({ group: 'career', progress: { unlockedLevel: 1, passedLevels: [], attempts: 0 } });
     expect(missions[1]!.objectives[0]).toBe('Make your case with concrete results');
-    expect(JSON.stringify(missions)).not.toMatch(/ceiling|acceptable|concession|floorPrice|SUCCESS|promptTemplate/);
+    expect(JSON.stringify(missions)).not.toMatch(/ceiling|acceptable|concession|floorPrice|SUCCESS|promptTemplate|9:40|badminton/);
   });
 
   it('plays a level, judges the outcome and unlocks the next level', async () => {
@@ -360,6 +365,61 @@ describe('missions', () => {
     const next = await post('/conversations', alice, { scenarioId: bargain.id, missionLevel: 2 });
     expect(next.status).toBe(201);
     await post(`/conversations/${((await next.json()) as CreateConversationResponse).id}/end`, alice);
+  });
+});
+
+describe('replays ("try that answer again")', () => {
+  it('replays one moment with the same partner and compares both answers', async () => {
+    const list = (await (await get('/conversations', alice)).json()) as ConversationList;
+    const originalId = list.items.find((c) => c.scenarioTitle === 'Bargaining' && c.missionLevel === null)!.id;
+    const original = (await (await get(`/conversations/${originalId}`, alice)).json()) as ConversationDetail;
+    const answer = original.turns.find((t, i) => t.speaker === 'USER' && original.turns.slice(0, i).some((x) => x.speaker === 'AI'))!;
+    const question = [...original.turns.filter((t) => t.seq < answer.seq && t.speaker === 'AI')].at(-1)!;
+
+    // Only the user's own lines can be replayed, and only by their owner.
+    expect((await post(`/conversations/${originalId}/replay`, alice, { turnSeq: question.seq })).status).toBe(400);
+    expect((await post(`/conversations/${originalId}/replay`, bob, { turnSeq: answer.seq })).status).toBe(404);
+
+    const res = await post(`/conversations/${originalId}/replay`, alice, { turnSeq: answer.seq });
+    expect(res.status).toBe(201);
+    const created = (await res.json()) as CreateConversationResponse;
+    expect(created.brief.title).toBe('Try again: Bargaining');
+    expect(created.persona.name).toBe(original.personaName); // same partner
+
+    const phone = await createFakePhone();
+    const { sdpAnswer } = (await (await post(`/conversations/${created.id}/connect`, alice, { sdpOffer: phone.offer })).json()) as { sdpAnswer: string };
+    expect(JSON.stringify(gemini.setups.at(-1)!.systemInstruction)).toContain('quick replay of one moment');
+    await phone.accept(sdpAnswer);
+    await phone.waitForDataChannel();
+    const cuesBefore = gemini.cues.length;
+    await post(`/conversations/${created.id}/ready`, alice);
+    await until(() => gemini.cues.length > cuesBefore);
+    expect(gemini.cues.at(-1)).toContain('the replay has connected');
+    expect(gemini.cues.at(-1)).toContain(question.text.replace(/"/g, "'"));
+    await new Promise((r) => setTimeout(r, 800));
+    await post(`/conversations/${created.id}/end`, alice);
+    await phone.close();
+
+    let detail: ConversationDetail | null = null;
+    await until(async () => {
+      detail = (await (await get(`/conversations/${created.id}`, alice)).json()) as ConversationDetail;
+      return detail.analysisStatus === 'COMPLETED' || detail.analysisStatus === 'FAILED';
+    }, 20_000);
+    const d = detail as unknown as ConversationDetail;
+    expect(d.feedback).toBeNull(); // replays get a comparison, not a full analysis
+    expect(d.replay).toMatchObject({
+      originalId,
+      turnSeq: answer.seq,
+      question: question.text,
+      originalAnswer: answer.text,
+      result: { firstScore: 40, secondScore: 80, improved: 'You gave a reason this time.' },
+    });
+    expect(d.replay!.newAnswer).toBeTruthy();
+    expect(gemini.evaluations.at(-1)).toContain('SECOND ANSWER (replay)');
+
+    // Replays stay out of History.
+    const after = (await (await get('/conversations', alice)).json()) as ConversationList;
+    expect(after.items.some((c) => c.id === created.id)).toBe(false);
   });
 });
 

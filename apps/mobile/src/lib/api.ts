@@ -93,6 +93,7 @@ export const api = {
     request(`/conversations${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, { method: 'GET' }, ConversationList),
   conversation: (id: string) => request(conv(id), { method: 'GET' }, ConversationDetail),
   deleteConversation: (id: string) => request(conv(id), { method: 'DELETE' }, null),
+  replay: (id: string, turnSeq: number) => request(`${conv(id)}/replay`, { method: 'POST', body: { turnSeq } }, CreateConversationResponse),
 
   connect: (id: string, body: ConnectRequest) => request(`${conv(id)}/connect`, { method: 'POST', body }, ConnectResponse),
   ready: (id: string) => request(`${conv(id)}/ready`, { method: 'POST' }, null),

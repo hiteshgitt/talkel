@@ -4,6 +4,7 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { ScenarioArt } from '@/components/art';
 import { FeedbackSection } from '@/components/feedback';
+import { ReplayResultCard } from '@/components/replay-result';
 import { LEVEL_LABEL } from '@/components/pickers';
 import { TranscriptLine } from '@/components/transcript';
 import { Badge, Body, Button, Card, ErrorText, Loading, Screen, SectionHeader } from '@/components/ui';
@@ -11,6 +12,7 @@ import { api, friendlyError } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
 import { audioPlaybackAvailable } from '@/lib/runtime';
 import { CONVERSATIONS_KEY, conversationKey, formatMinutes, QUOTA_KEY, useMe } from '@/lib/queries';
+import { useStartReplay } from '@/lib/replay';
 import { makeStyles } from '@/theme';
 
 // Loaded only when there is a recording and this app build includes the audio module.
@@ -47,6 +49,7 @@ export default function ConversationScreen() {
         : false,
   });
   const { data: me } = useMe();
+  const replay = useStartReplay(id);
   const retry = useMutation({
     mutationFn: () => api.retryFeedback(id),
     onSuccess: () => void qc.invalidateQueries({ queryKey: conversationKey(id) }),
@@ -71,6 +74,11 @@ export default function ConversationScreen() {
     );
   }
   const c = detail.data;
+  // "Try that answer again" works on the user's lines of a finished, original conversation.
+  const canReplay = c.status === 'ENDED' && !c.replay;
+  const replayable = new Set(
+    canReplay ? c.turns.filter((t, i) => t.speaker === 'USER' && t.text.trim() && c.turns.slice(0, i).some((x) => x.speaker === 'AI')).map((t) => t.seq) : [],
+  );
 
   return (
     <Screen edges={['bottom']}>
@@ -78,7 +86,7 @@ export default function ConversationScreen() {
       <View style={styles.head}>
         <ScenarioArt slug={c.scenarioSlug} size={60} />
         <View style={styles.headText}>
-          <Text style={styles.title}>{c.scenarioTitle}</Text>
+          <Text style={styles.title}>{c.replay ? 'Try again' : c.scenarioTitle}</Text>
           <Text style={styles.meta}>
             with {c.personaName} · {new Date(c.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
           </Text>
@@ -90,19 +98,39 @@ export default function ConversationScreen() {
         {c.endReason ? <Badge label={END_REASON[c.endReason] ?? ''} /> : null}
       </View>
 
-      <FeedbackSection c={c} lang={me?.settings.feedbackLanguage ?? 'en'} onRetry={() => retry.mutate()} retrying={retry.isPending} />
+      {c.replay ? (
+        <ReplayResultCard r={c.replay} status={c.analysisStatus} />
+      ) : (
+        <>
+          <FeedbackSection
+            c={c}
+            lang={me?.settings.feedbackLanguage ?? 'en'}
+            onRetry={() => retry.mutate()}
+            retrying={retry.isPending}
+            onReplay={canReplay ? (seq) => replay.mutate(seq) : undefined}
+          />
+          <ErrorText>{replay.error ? friendlyError(replay.error) : null}</ErrorText>
 
-      <Card>
-        <Text style={styles.sectionTitle}>The situation</Text>
-        <Body>{c.brief.briefing}</Body>
-      </Card>
+          <Card>
+            <Text style={styles.sectionTitle}>The situation</Text>
+            <Body>{c.brief.briefing}</Body>
+          </Card>
+        </>
+      )}
 
       {c.recording ? <RecordingSection id={c.id} inProgress={c.recording.inProgress} durationMs={c.recording.durationMs} /> : null}
 
       <SectionHeader title="Transcript" icon="chatbubbles-outline" />
       {c.turns.length === 0 ? <Body muted>Nothing was said in this conversation.</Body> : null}
       {c.turns.map((t) => (
-        <TranscriptLine key={t.seq} turn={t} personaName={c.personaName} feedback={c.feedback} />
+        <TranscriptLine
+          key={t.seq}
+          turn={t}
+          personaName={c.personaName}
+          feedback={c.feedback}
+          onReplay={replayable.has(t.seq) ? () => replay.mutate(t.seq) : undefined}
+          replaying={replay.isPending && replay.variables === t.seq}
+        />
       ))}
 
       <Button label="Practise again" icon="refresh" onPress={() => router.replace('/practice')} />
