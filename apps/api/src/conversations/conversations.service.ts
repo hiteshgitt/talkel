@@ -639,6 +639,9 @@ function toFeedback(a: AnalysisRow): Feedback {
     },
     conversationSkills: a.conversationSkills,
     translationPatterns: a.translationPatterns,
+    // Older analyses (eval-v1) have none; tolerate anything malformed rather than failing the page.
+    phrasing: Feedback.shape.phrasing.catch([]).parse(a.phrasing),
+    conversationMoments: Feedback.shape.conversationMoments.catch([]).parse(a.conversationMoments),
     recommendations: a.recommendations.map((r) => ({ type: r.type, scenarioSlug: r.scenarioSlug, title: r.title, reason: r.reason })),
     feedbackLanguage: FeedbackLanguage.catch('en').parse(a.feedbackLanguage),
   });

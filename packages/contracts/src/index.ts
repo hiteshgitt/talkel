@@ -312,6 +312,10 @@ export const GrammarCategory = z.enum([
 ]);
 export type GrammarCategory = z.infer<typeof GrammarCategory>;
 
+/** What went wrong in a conversation moment. */
+export const MomentKind = z.enum(['TOO_SHORT', 'MISSED_QUESTION', 'NO_FOLLOW_UP', 'OFF_TOPIC', 'ABRUPT_TONE', 'UNCLEAR']);
+export type MomentKind = z.infer<typeof MomentKind>;
+
 export const Feedback = z.object({
   overallScore: z.number().int().min(0).max(100),
   summary: z.string(),
@@ -353,27 +357,88 @@ export const Feedback = z.object({
     notes: z.string(),
   }),
   translationPatterns: z.array(z.string()),
+  /** Correct but unnatural sentences, with a more natural way to say them. */
+  phrasing: z.array(z.object({ turnSeq: z.number().int(), original: z.string(), better: z.string(), why: z.string() })),
+  /** Replies the learner could have handled better, with an example of a better reply. */
+  conversationMoments: z.array(
+    z.object({ turnSeq: z.number().int(), kind: MomentKind, youSaid: z.string(), better: z.string(), why: z.string() }),
+  ),
   recommendations: z.array(z.object({ type: z.string(), scenarioSlug: z.string().nullable(), title: z.string(), reason: z.string() })),
   feedbackLanguage: FeedbackLanguage,
 });
 export type Feedback = z.infer<typeof Feedback>;
 
+const SkillScores = z.object({
+  grammar: z.number().int().nullable(),
+  vocabulary: z.number().int().nullable(),
+  fluency: z.number().int().nullable(),
+  conversation: z.number().int().nullable(),
+  clarity: z.number().int().nullable(),
+});
+
+/** Direction of a measure between earlier and recent conversations; null when there is too little data. */
+export const Trend = z.enum(['BETTER', 'WORSE', 'STEADY']);
+export type Trend = z.infer<typeof Trend>;
+
+/**
+ * Observable signals of speaking confidence (PRD §28: explainable, no "your confidence is 74%").
+ * Values are averages over the recent conversations and the ones before them.
+ */
+export const ConfidenceKey = z.enum(['RESPONSE_SPEED', 'ANSWER_LENGTH', 'LONG_PAUSES', 'FILLERS', 'ASKING_QUESTIONS']);
+export type ConfidenceKey = z.infer<typeof ConfidenceKey>;
+export const ConfidenceIndicator = z.object({
+  key: ConfidenceKey,
+  /** RESPONSE_SPEED: seconds · ANSWER_LENGTH: words per answer · LONG_PAUSES / FILLERS: per minute · ASKING_QUESTIONS: share of calls 0–1 */
+  recent: z.number().nullable(),
+  earlier: z.number().nullable(),
+  trend: Trend.nullable(),
+});
+export type ConfidenceIndicator = z.infer<typeof ConfidenceIndicator>;
+
 export const Progress = z.object({
   analysedConversations: z.number().int(),
   totalSpeakingMs: z.number().int(),
   /** Smoothed skill scores (0–100), recent conversations weighted more; null until the first feedback. */
-  skills: z.object({
-    grammar: z.number().int().nullable(),
-    vocabulary: z.number().int().nullable(),
-    fluency: z.number().int().nullable(),
-    conversation: z.number().int().nullable(),
-  }),
-  commonMistakes: z.array(z.object({ category: GrammarCategory, count: z.number().int() })),
+  skills: SkillScores,
+  streak: z.object({ current: z.number().int(), longest: z.number().int(), practisedToday: z.boolean() }),
+  /** Seconds spoken per local day, oldest first (the last 28 days, ending today). */
+  calendar: z.array(z.object({ date: z.string(), seconds: z.number().int() })),
+  /** Per analysed conversation, oldest first (the most recent 20). */
+  history: z.array(
+    z.object({
+      conversationId: z.string(),
+      createdAt: z.string(),
+      scenarioTitle: z.string(),
+      overall: z.number().int(),
+      skills: SkillScores,
+      wordsPerMinute: z.number().int().nullable(),
+      mistakes: z.number().int(),
+    }),
+  ),
+  confidence: z.array(ConfidenceIndicator),
+  /** Trend: BETTER = fewer per conversation recently than before. */
+  commonMistakes: z.array(z.object({ category: GrammarCategory, count: z.number().int(), trend: Trend.nullable() })),
   commonFillers: z.array(z.object({ word: z.string(), count: z.number().int() })),
   /** A few recent corrections to review. */
   recentCorrections: z.array(z.object({ original: z.string(), corrected: z.string(), category: GrammarCategory })),
 });
 export type Progress = z.infer<typeof Progress>;
+
+/** Every correction of one mistake type, newest first. */
+export const MistakeList = z.object({
+  category: GrammarCategory,
+  items: z.array(
+    z.object({
+      original: z.string(),
+      corrected: z.string(),
+      explanation: z.string(),
+      createdAt: z.string(),
+      conversationId: z.string(),
+      scenarioTitle: z.string(),
+    }),
+  ),
+});
+export type MistakeList = z.infer<typeof MistakeList>;
 
 export const ConversationDetail = ConversationSummary.extend({
   accent: Accent,

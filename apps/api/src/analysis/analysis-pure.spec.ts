@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bandToScore, groundErrors, overallScore, quotedIn, smoothedBandToScore } from './grounding.js';
+import { bandToScore, groundErrors, groundQuoted, overallScore, quotedIn, smoothedBandToScore } from './grounding.js';
 import { computeFluency, countFillers } from './metrics.js';
 
 describe('countFillers', () => {
@@ -62,6 +62,16 @@ describe('grounding', () => {
     expect(dropped).toBe(2);
   });
 
+  it('grounds other quoted feedback (phrasing, conversation moments) the same way', () => {
+    const moments = [
+      { turnSeq: 3, youSaid: 'I am agree with you', better: 'I agree — and I would add…' },
+      { turnSeq: 3, youSaid: 'Fine.', better: 'Sounds good to me!' }, // never said
+    ];
+    const { kept, dropped } = groundQuoted(moments, said, (m) => m.youSaid, (m) => m.better);
+    expect(kept.map((m) => m.youSaid)).toEqual(['I am agree with you']);
+    expect(dropped).toBe(1);
+  });
+
   it('ignores case, punctuation and curly quotes when matching', () => {
     expect(quotedIn('i DON’T know', "Well, I don't know.")).toBe(true);
     expect(quotedIn('', 'anything')).toBe(false);
@@ -99,12 +109,36 @@ describe('generateStructured', () => {
     expect(calls.map((c) => c.split('/models/')[1])).toEqual(['model-a:generateContent', 'model-b:generateContent']);
   });
 
-  it('fails fast on a non-retryable error', async () => {
+  it('skips a retired model and keeps retrying overloaded ones (the fallback must not end on it)', async () => {
+    const { generateStructured } = await import('./gemini-text.js');
+    const calls: string[] = [];
+    let busy = 2;
+    const fetchImpl = (async (url: string) => {
+      const model = url.split('/models/')[1]!.split(':')[0]!;
+      calls.push(model);
+      if (model === 'retired') return new Response(JSON.stringify({ error: { message: 'no longer available to new users' } }), { status: 404 });
+      if (busy-- > 0) return new Response(JSON.stringify({ error: { message: 'high demand' } }), { status: 503 });
+      return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '{}' }] } }] }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const r = await generateStructured(
+      { apiKey: 'k', baseUrl: 'https://x.test', models: ['busy', 'retired'], fetchImpl, sleep: async () => undefined },
+      { system: '', user: '' },
+      {},
+    );
+    expect(r.model).toBe('busy');
+    expect(calls).toEqual(['busy', 'retired', 'busy', 'busy']);
+  });
+
+  it('fails without retrying when no model is usable, or on an auth error', async () => {
     const { generateStructured, EvaluationProviderError } = await import('./gemini-text.js');
-    const fetchImpl = (async () => new Response(JSON.stringify({ error: { message: 'bad schema' } }), { status: 400 })) as unknown as typeof fetch;
-    await expect(
-      generateStructured({ apiKey: 'k', baseUrl: 'https://x.test', models: ['m'], fetchImpl, sleep: async () => undefined }, { system: '', user: '' }, {}),
-    ).rejects.toBeInstanceOf(EvaluationProviderError);
+    const reply = (status: number) => (async () => new Response(JSON.stringify({ error: { message: 'x' } }), { status })) as unknown as typeof fetch;
+    const run = (status: number) =>
+      generateStructured({ apiKey: 'k', baseUrl: 'https://x.test', models: ['a', 'b'], fetchImpl: reply(status), sleep: async () => undefined }, { system: '', user: '' }, {});
+    for (const status of [400, 403]) {
+      const err = await run(status).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(EvaluationProviderError);
+      expect((err as InstanceType<typeof EvaluationProviderError>).retryable).toBe(false);
+    }
   });
 });
 
@@ -129,5 +163,38 @@ describe('evaluation prompt', () => {
     expect(p.user).toContain('- made_counter_offer: Made a counter-offer');
     expect(p.system).toContain('Hindi');
     expect(JSON.stringify(evaluationJsonSchema)).toContain('grammarErrors');
+  });
+
+  it('sends Gemini a schema without size limits (they make large schemas fail with "invalid argument")', async () => {
+    const { evaluationJsonSchema } = await import('./evaluation.js');
+    const json = JSON.stringify(evaluationJsonSchema);
+    for (const k of ['maxItems', 'maxLength', 'minLength', 'maximum']) expect(json).not.toContain(`"${k}"`);
+    expect(json).toContain('"enum"'); // shape and allowed values are still constrained
+  });
+
+  it('clamps over-long answers to the limits instead of failing them', async () => {
+    const { clampEvaluation, EvaluationOutput } = await import('./evaluation.js');
+    const skill = { band: 3, rationale: 'r' };
+    const error = { turnSeq: 1, original: 'a', corrected: 'b', category: 'OTHER', explanation: 'x'.repeat(1000), severity: 'LOW' };
+    const raw = {
+      summary: 's',
+      strengths: ['a', 'b', 'c', 'd', 'e'],
+      focusAreas: [],
+      skills: { grammar: skill, vocabulary: skill, fluency: skill, conversation: skill, clarity: skill },
+      grammarErrors: Array.from({ length: 30 }, () => error),
+      phrasing: [],
+      vocabulary: [],
+      conversationSkills: { askedQuestions: true, elaborated: true, disagreedPolitely: null, clarified: null, notes: '' },
+      conversationMoments: [],
+      translationPatterns: [],
+      goalsAchieved: [],
+      recommendations: [],
+    };
+    expect(EvaluationOutput.safeParse(raw).success).toBe(false);
+    const out = EvaluationOutput.parse(clampEvaluation(raw));
+    expect(out.grammarErrors).toHaveLength(20);
+    expect(out.strengths).toHaveLength(3);
+    expect(out.grammarErrors[0]!.explanation.length).toBeLessThanOrEqual(400);
+    expect(out.grammarErrors[0]!.explanation.endsWith('…')).toBe(true);
   });
 });

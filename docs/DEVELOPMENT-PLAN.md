@@ -97,6 +97,11 @@ AI replies → user interrupts mid-sentence → AI stops and continues naturally
 
 ## Milestone 4 — History, progress, web dashboard, admin
 
+> **Status (2026-09-30): in progress.**
+> - **Done — Progress (mobile):** streak + 28-day practice calendar, overall score per conversation (tap to open), skill trends incl. clarity, a "speaking confidence" card built only from measured signals (time to answer, words per answer, long pauses, fillers, asking questions — recent 3 vs previous 3 conversations; PRD §28, no single confidence %), mistake types with fewer/more trend and a drill-down of every example. Pure, unit-tested calculations in `apps/api/src/analysis/progress-stats.ts`.
+> - **Done — richer feedback (eval-v2):** every real grammar mistake (≤20, major/minor), "say it more naturally" rewrites, conversation moments (too short, missed question, no follow-up, off topic, abrupt, unclear) with a better reply — all grounded on the learner's words — and mistakes underlined in the transcript (tap a line for its fixes). Gemini gets the schema without size limits (large limited schemas fail with 400 "invalid argument"); limits are applied in code (`clampEvaluation`) before strict Zod validation. Retired models are skipped; analysis jobs retry for ~10 min when every model is overloaded.
+> - **Next:** Home (today's practice, recommended next), web dashboard, admin, account deletion + export.
+
 - Mobile: History list/detail (transcript + analysis), Progress (speaking minutes, streak, skill trends), Home (today's practice, recommended next).
 - Web: overview, skills, mistakes, vocabulary, history.
 - Admin: scenario/persona/prompt versioning with draft → preview → publish, activate/deactivate, users, usage/cost dashboard, session debug view (audit-logged).

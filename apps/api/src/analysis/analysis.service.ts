@@ -5,9 +5,9 @@ import { z } from 'zod';
 import { ENV, type Env } from '../config/env.js';
 import { PRISMA } from '../db/prisma.module.js';
 import { renderTemplate } from '../engine/scenario-kinds.js';
-import { buildEvaluationPrompt, EVAL_PROMPT_VERSION, EvaluationOutput, evaluationJsonSchema } from './evaluation.js';
+import { buildEvaluationPrompt, clampEvaluation, EVAL_PROMPT_VERSION, EvaluationOutput, evaluationJsonSchema } from './evaluation.js';
 import { generateStructured } from './gemini-text.js';
-import { bandToScore, groundErrors, overallScore } from './grounding.js';
+import { bandToScore, groundErrors, groundQuoted, overallScore } from './grounding.js';
 import { LearningProfileService } from './learning-profile.service.js';
 import { computeFluency } from './metrics.js';
 
@@ -94,7 +94,7 @@ export class AnalysisService {
     } catch {
       throw new RetryableAnalysisError(`evaluation returned invalid JSON (${result.model})`);
     }
-    const parsed = EvaluationOutput.safeParse(raw);
+    const parsed = EvaluationOutput.safeParse(clampEvaluation(raw));
     if (!parsed.success) {
       throw new RetryableAnalysisError(`evaluation failed validation (${result.model}): ${parsed.error.issues[0]?.message}`);
     }
@@ -102,7 +102,10 @@ export class AnalysisService {
 
     // Guardrails: keep only corrections that quote what the learner actually said, and known goals/scenarios.
     const said = new Map(userTurns.map((t) => [t.seq, t.text] as const));
-    const { kept: grammarErrors, dropped } = groundErrors(out.grammarErrors, said);
+    const { kept: grammarErrors, dropped: droppedErrors } = groundErrors(out.grammarErrors, said);
+    const { kept: phrasing, dropped: droppedPhrasing } = groundQuoted(out.phrasing, said, (p) => p.original, (p) => p.better);
+    const { kept: moments, dropped: droppedMoments } = groundQuoted(out.conversationMoments, said, (m) => m.youSaid, (m) => m.better);
+    const dropped = droppedErrors + droppedPhrasing + droppedMoments;
     const goalIds = new Set(goals.map((g) => g.id));
     const achieved = [...new Set(out.goalsAchieved.filter((g) => goalIds.has(g)))];
     const slugs = new Set(scenarios.map((s) => s.slug));
@@ -123,6 +126,8 @@ export class AnalysisService {
           focusAreas: out.focusAreas,
           conversationSkills: out.conversationSkills,
           translationPatterns: out.translationPatterns,
+          phrasing,
+          conversationMoments: moments,
           feedbackLanguage,
           evalModel: result.model,
           evalPromptVersion: EVAL_PROMPT_VERSION,
@@ -159,7 +164,7 @@ export class AnalysisService {
       });
     });
 
-    this.logger.log(`analysed ${sessionId} with ${result.model}: ${grammarErrors.length} corrections (${dropped} dropped), goals=${achieved.join(',') || '-'}`);
+    this.logger.log(`analysed ${sessionId} with ${result.model}: ${grammarErrors.length} corrections, ${phrasing.length} phrasing, ${moments.length} moments (${dropped} dropped), goals=${achieved.join(',') || '-'}`);
     return 'COMPLETED';
   }
 

@@ -63,6 +63,7 @@ function AppNavigator() {
         <Stack.Screen name="brief/[id]" />
         <Stack.Screen name="call" options={{ gestureEnabled: false }} />
         <Stack.Screen name="conversation/[id]" />
+        <Stack.Screen name="mistakes/[category]" />
       </Stack.Protected>
     </Stack>
   );

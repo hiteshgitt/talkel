@@ -92,7 +92,8 @@ Allowed only when status ∈ {CREATED, RECONNECTING} and within TTL. Errors: `SE
 
 | Method | Path | Response |
 |---|---|---|
-| GET | `/progress?range=30d` | Totals (sessions, speaking time, avg session), per-skill band trend series, streak (derived) |
+| GET | `/progress` | Totals, smoothed skill scores (incl. clarity), per-conversation history (last 20), streak + 28-day practice calendar (user's time zone), confidence indicators (recent 3 vs previous 3 conversations), common mistakes with trend, fillers, recent corrections |
+| GET | `/progress/mistakes/:category` | The user's corrections of one mistake type (newest first, max 50) |
 | GET | `/mistakes?category&cursor` | Grammar errors across sessions, grouped by category with counts |
 | GET | `/vocabulary?kind&cursor` | Vocabulary items across sessions |
 | GET | `/recommendations` | Active practice recommendations |

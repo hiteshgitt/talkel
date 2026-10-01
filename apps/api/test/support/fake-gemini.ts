@@ -3,7 +3,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { type WebSocket, WebSocketServer } from 'ws';
 
-/** What the fake evaluation model "says". One correction is invented on purpose (grounding must drop it). */
+/** What the fake evaluation model "says". Two corrections are invalid on purpose (grounding must drop them). */
 export const FAKE_EVALUATION = {
   summary: 'Good start.',
   strengths: ['Polite'],
@@ -18,9 +18,18 @@ export const FAKE_EVALUATION = {
   grammarErrors: [
     { turnSeq: 0, original: 'Hello! Nice', corrected: 'Hello, nice', category: 'OTHER', explanation: 'x', severity: 'LOW' },
     { turnSeq: 1, original: 'I have went to Goa', corrected: 'I went to Goa', category: 'VERB_TENSE', explanation: 'invented', severity: 'HIGH' },
+    { turnSeq: 1, original: 'too costly', corrected: 'too expensive', category: 'WORD_CHOICE', explanation: 'More natural.', severity: 'LOW' },
+  ],
+  phrasing: [
+    { turnSeq: 1, original: 'I can give you one thousand rupees only', better: 'I can only give you a thousand rupees', why: 'Word order.' },
+    { turnSeq: 1, original: 'I am doing job', better: 'I work', why: 'invented' },
   ],
   vocabulary: [{ kind: 'UPGRADE', term: 'good', alternatives: ['great'], example: null }],
   conversationSkills: { askedQuestions: false, elaborated: false, disagreedPolitely: null, clarified: null, notes: 'n' },
+  conversationMoments: [
+    { turnSeq: 1, kind: 'ABRUPT_TONE', youSaid: 'this jacket is too costly', better: 'It’s a lovely jacket, but it’s a bit over my budget.', why: 'Softer.' },
+    { turnSeq: 1, kind: 'TOO_SHORT', youSaid: 'Yes.', better: 'Yes, I’d like that.', why: 'invented' },
+  ],
   translationPatterns: [],
   goalsAchieved: ['made_counter_offer', 'not_a_real_goal'],
   recommendations: [{ type: 'SCENARIO', scenarioSlug: 'debate', title: 'Try a debate', reason: 'r' }],

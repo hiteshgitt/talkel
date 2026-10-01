@@ -1,4 +1,4 @@
-import type { ConversationDetail, Feedback, SkillKey } from '@speakai/contracts';
+import type { ConversationDetail, Feedback, MomentKind, SkillKey } from '@speakai/contracts';
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Body, Button, Card } from '@/components/ui';
@@ -30,6 +30,15 @@ const T = {
     noFillers: 'none found',
     response: 'Typical time to start answering',
     tryIt: 'Start',
+    major: 'Major',
+    minor: 'Minor',
+    natural: 'Say it more naturally',
+    naturalHint: 'Not wrong, but a fluent speaker would say it differently.',
+    moments: 'Conversation moments',
+    momentsHint: 'Replies you could handle better next time.',
+    youSaid: 'You said',
+    tryInstead: 'Try',
+    transcriptHint: 'Mistakes are underlined in the transcript below. Tap your line to see the fixes.',
   },
   hi: {
     preparing: 'आपका फ़ीडबैक तैयार हो रहा है…',
@@ -54,8 +63,36 @@ const T = {
     noFillers: 'कोई नहीं मिला',
     response: 'जवाब शुरू करने में आम समय',
     tryIt: 'शुरू करें',
+    major: 'बड़ी',
+    minor: 'छोटी',
+    natural: 'इसे और स्वाभाविक तरीके से कहें',
+    naturalHint: 'गलत नहीं है, पर धाराप्रवाह बोलने वाले इसे ऐसे कहेंगे।',
+    moments: 'बातचीत के पल',
+    momentsHint: 'ऐसे जवाब जिन्हें अगली बार बेहतर कर सकते हैं।',
+    youSaid: 'आपने कहा',
+    tryInstead: 'ऐसे कहें',
+    transcriptHint: 'नीचे ट्रांसक्रिप्ट में गलतियाँ रेखांकित हैं। सुधार देखने के लिए अपनी लाइन पर टैप करें।',
   },
 } as const;
+
+export const MOMENT_NAME: Record<'en' | 'hi', Record<MomentKind, string>> = {
+  en: {
+    TOO_SHORT: 'Too short',
+    MISSED_QUESTION: 'Missed the question',
+    NO_FOLLOW_UP: 'No follow-up',
+    OFF_TOPIC: 'Off topic',
+    ABRUPT_TONE: 'Sounds abrupt',
+    UNCLEAR: 'Unclear',
+  },
+  hi: {
+    TOO_SHORT: 'बहुत छोटा जवाब',
+    MISSED_QUESTION: 'सवाल का जवाब नहीं',
+    NO_FOLLOW_UP: 'बातचीत आगे नहीं बढ़ाई',
+    OFF_TOPIC: 'विषय से हटकर',
+    ABRUPT_TONE: 'रूखा लग सकता है',
+    UNCLEAR: 'स्पष्ट नहीं',
+  },
+};
 
 const SKILL_NAME: Record<'en' | 'hi', Record<SkillKey, string>> = {
   en: { grammar: 'Grammar', vocabulary: 'Vocabulary', fluency: 'Fluency', conversation: 'Conversation', clarity: 'Clarity' },
@@ -143,16 +180,60 @@ function FeedbackView({ f, goals }: { f: Feedback; goals: ConversationDetail['go
       </Card>
 
       <Card>
-        <Text style={styles.h}>{t.corrections}</Text>
+        <Text style={styles.h}>
+          {t.corrections}
+          {f.grammarErrors.length ? ` (${f.grammarErrors.length})` : ''}
+        </Text>
         {f.grammarErrors.length === 0 ? <Body muted>{t.noCorrections}</Body> : null}
         {f.grammarErrors.map((e, i) => (
           <View key={i} style={styles.correction}>
-            <Text style={styles.wrong}>{e.original}</Text>
+            <View style={styles.corrTop}>
+              <Text style={[styles.wrong, styles.flex]}>{e.original}</Text>
+              <Text style={[styles.chip, e.severity === 'LOW' ? styles.chipMinor : styles.chipMajor]}>
+                {e.severity === 'LOW' ? t.minor : t.major}
+              </Text>
+            </View>
             <Text style={styles.right}>{e.corrected}</Text>
             <Text style={styles.muted}>{e.explanation}</Text>
           </View>
         ))}
+        {f.grammarErrors.length || f.phrasing.length ? <Text style={[styles.muted, styles.gap]}>{t.transcriptHint}</Text> : null}
       </Card>
+
+      {f.phrasing.length ? (
+        <Card>
+          <Text style={styles.h}>
+            {t.natural} ({f.phrasing.length})
+          </Text>
+          <Body muted>{t.naturalHint}</Body>
+          {f.phrasing.map((p, i) => (
+            <View key={i} style={styles.correction}>
+              <Text style={styles.plain}>{p.original}</Text>
+              <Text style={styles.right}>→ {p.better}</Text>
+              <Text style={styles.muted}>{p.why}</Text>
+            </View>
+          ))}
+        </Card>
+      ) : null}
+
+      {f.conversationMoments.length ? (
+        <Card>
+          <Text style={styles.h}>{t.moments}</Text>
+          <Body muted>{t.momentsHint}</Body>
+          {f.conversationMoments.map((m, i) => (
+            <View key={i} style={styles.correction}>
+              <Text style={[styles.chip, styles.chipMoment]}>{MOMENT_NAME[f.feedbackLanguage][m.kind]}</Text>
+              <Text style={styles.muted}>
+                {t.youSaid}: <Text style={styles.plain}>“{m.youSaid}”</Text>
+              </Text>
+              <Text style={styles.right}>
+                {t.tryInstead}: “{m.better}”
+              </Text>
+              <Text style={styles.muted}>{m.why}</Text>
+            </View>
+          ))}
+        </Card>
+      ) : null}
 
       {f.vocabulary.length ? (
         <Card>
@@ -262,6 +343,13 @@ const styles = StyleSheet.create({
   correction: { gap: 4, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
   wrong: { color: colors.danger, fontSize: 15, textDecorationLine: 'line-through' },
   right: { color: colors.userSpeaking, fontSize: 16, fontWeight: '600' },
+  plain: { color: colors.text, fontSize: 15 },
+  flex: { flex: 1 },
+  corrTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  chip: { alignSelf: 'flex-start', fontSize: 11, fontWeight: '700', paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.pill, overflow: 'hidden' },
+  chipMajor: { color: colors.bg, backgroundColor: colors.danger },
+  chipMinor: { color: colors.text, backgroundColor: colors.surfaceRaised },
+  chipMoment: { color: colors.bg, backgroundColor: colors.warning },
   vocab: { gap: 2, marginTop: 4 },
   term: { color: colors.text, fontSize: 15, fontWeight: '700' },
   rec: { gap: 4, marginTop: 6 },

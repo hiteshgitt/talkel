@@ -2,7 +2,7 @@
  * Full conversation lifecycle against the compiled server, a real Postgres, a fake Gemini Live
  * server and a headless WebRTC phone.
  */
-import { CONSENT_VERSION } from '@speakai/contracts';
+import { CONSENT_VERSION, MistakeList, Progress } from '@speakai/contracts';
 import type { Catalog, ConversationDetail, ConversationList, CreateConversationResponse, Quota } from '@speakai/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type ApiProcess, startApi, startWorker } from './support/api-process.js';
@@ -178,8 +178,12 @@ describe('a full conversation', () => {
     // Overall comes from the bands (3,4,4,3,4), not from the model.
     expect(f.overallScore).toBe(70);
     expect(f.skills.grammar).toEqual({ band: 3, score: 60, rationale: 'Some tense errors.' });
-    // Both invented corrections are dropped: one quotes the AI, one quotes words the learner never said.
-    expect(f.grammarErrors).toEqual([]);
+    // Invented corrections are dropped (one quotes the AI, one quotes words the learner never said);
+    // the genuine one is kept.
+    expect(f.grammarErrors).toEqual([expect.objectContaining({ original: 'too costly', corrected: 'too expensive', category: 'WORD_CHOICE' })]);
+    // Same grounding for "say it more naturally" and conversation moments.
+    expect(f.phrasing).toEqual([expect.objectContaining({ original: 'I can give you one thousand rupees only' })]);
+    expect(f.conversationMoments).toEqual([expect.objectContaining({ kind: 'ABRUPT_TONE', youSaid: 'this jacket is too costly' })]);
     expect(f.fluency.userWords).toBe(14);
     // Unknown goal ids are ignored; the real one is recorded.
     expect(d.goals.find((g) => g.id === 'made_counter_offer')?.achieved).toBe(true);
@@ -191,9 +195,24 @@ describe('a full conversation', () => {
       ['alice.conv@example.com'],
     );
     expect(profile?.analysedCount).toBe(1);
-    const progress = (await (await get('/progress', alice)).json()) as { analysedConversations: number; skills: Record<string, number | null> };
+    const progress = Progress.parse(await (await get('/progress', alice)).json());
     expect(progress.analysedConversations).toBe(1);
     expect(progress.skills.grammar).toBe(60); // band 3 → 60, the same scale as a conversation's feedback
+    expect(progress.skills.clarity).toBe(80);
+    expect(progress.history).toHaveLength(1);
+    expect(progress.history[0]).toMatchObject({ overall: expect.any(Number), mistakes: 1 });
+    expect(progress.streak).toMatchObject({ current: 1, practisedToday: true });
+    expect(progress.calendar).toHaveLength(28);
+    expect(progress.calendar.at(-1)!.seconds).toBeGreaterThan(0);
+    expect(progress.confidence.map((i) => i.key)).toContain('RESPONSE_SPEED');
+    expect(progress.commonMistakes[0]).toMatchObject({ trend: null }); // nothing to compare with yet
+
+    const category = progress.commonMistakes[0]!.category;
+    const mistakes = MistakeList.parse(await (await get(`/progress/mistakes/${category}`, alice)).json());
+    expect(mistakes.items[0]).toMatchObject({ original: 'too costly', conversationId: progress.history[0]!.conversationId });
+    expect((await get(`/progress/mistakes/${category}`, bob)).status).toBe(200);
+    expect(MistakeList.parse(await (await get(`/progress/mistakes/${category}`, bob)).json()).items).toHaveLength(0); // only your own
+    expect((await get('/progress/mistakes/NOPE', alice)).status).toBe(404);
   });
 });
 

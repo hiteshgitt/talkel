@@ -27,7 +27,7 @@ export default function CallScreen() {
     if (!ended) return;
     void qc.invalidateQueries({ queryKey: QUOTA_KEY });
     void qc.invalidateQueries({ queryKey: CONVERSATIONS_KEY });
-    router.replace({ pathname: '/conversation/[id]', params: { id: conversationId } });
+    showResult(conversationId);
   }, [ended, conversationId, qc]);
 
   // Hardware back behaves like "end call" rather than silently leaving a live call.
@@ -70,7 +70,7 @@ export default function CallScreen() {
       {state.phase === 'failed' ? (
         <FailedPanel
           state={state}
-          onDone={() => router.replace({ pathname: '/conversation/[id]', params: { id: conversationId } })}
+          onDone={() => showResult(conversationId)}
         />
       ) : (
         <Controls call={call} state={state} onEnd={endCall} />
@@ -153,6 +153,15 @@ const ROUTE_LABEL: Record<AudioRoute, { label: string; glyph: string }> = {
   WIRED_HEADSET: { label: 'Headset', glyph: '🎧' },
   BLUETOOTH: { label: 'Bluetooth', glyph: '🎧' },
 };
+
+/**
+ * Opens the finished conversation on top of the tabs, so "back" from it returns home instead of to
+ * the scenario setup screens the call was started from.
+ */
+function showResult(id: string) {
+  if (router.canDismiss()) router.dismissAll();
+  router.push({ pathname: '/conversation/[id]', params: { id } });
+}
 
 function Controls({ call, state, onEnd }: { call: RealtimeCall | null; state: CallState; onEnd: () => void }) {
   const busy = state.phase === 'ending' || state.phase === 'ended';

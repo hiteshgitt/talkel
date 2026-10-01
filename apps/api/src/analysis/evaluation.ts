@@ -2,11 +2,11 @@
  * The evaluation AI (PRD §75–76): separate from the conversation AI, optimised for accuracy and
  * structured output. Its answer is validated with Zod — raw LLM JSON is never trusted.
  */
-import { type FeedbackLanguage, GrammarCategory } from '@speakai/contracts';
+import { type FeedbackLanguage, GrammarCategory, MomentKind } from '@speakai/contracts';
 import { z } from 'zod';
 import type { FluencyResult } from './metrics.js';
 
-export const EVAL_PROMPT_VERSION = 'eval-v1';
+export const EVAL_PROMPT_VERSION = 'eval-v2';
 
 const Band = z.number().int().min(1).max(5);
 const Skill = z.object({ band: Band, rationale: z.string().min(1).max(400) });
@@ -27,7 +27,17 @@ export const EvaluationOutput = z.object({
         severity: z.enum(['LOW', 'MEDIUM', 'HIGH']),
       }),
     )
-    .max(12),
+    .max(20),
+  phrasing: z
+    .array(
+      z.object({
+        turnSeq: z.number().int().min(0),
+        original: z.string().min(1).max(300),
+        better: z.string().min(1).max(300),
+        why: z.string().min(1).max(300),
+      }),
+    )
+    .max(8),
   vocabulary: z
     .array(
       z.object({
@@ -37,7 +47,7 @@ export const EvaluationOutput = z.object({
         example: z.string().max(200).nullable(),
       }),
     )
-    .max(6),
+    .max(8),
   conversationSkills: z.object({
     askedQuestions: z.boolean(),
     elaborated: z.boolean(),
@@ -45,6 +55,17 @@ export const EvaluationOutput = z.object({
     clarified: z.boolean().nullable(),
     notes: z.string().max(400),
   }),
+  conversationMoments: z
+    .array(
+      z.object({
+        turnSeq: z.number().int().min(0),
+        kind: MomentKind,
+        youSaid: z.string().min(1).max(300),
+        better: z.string().min(1).max(400),
+        why: z.string().min(1).max(300),
+      }),
+    )
+    .max(5),
   translationPatterns: z.array(z.string().max(250)).max(3),
   goalsAchieved: z.array(z.string()).max(10),
   recommendations: z
@@ -60,8 +81,53 @@ export const EvaluationOutput = z.object({
 });
 export type EvaluationOutput = z.infer<typeof EvaluationOutput>;
 
-/** JSON Schema for Gemini's structured output (generated from the Zod schema, so they can't drift). */
-export const evaluationJsonSchema = z.toJSONSchema(EvaluationOutput, { target: 'draft-7', io: 'output' });
+/** The full JSON Schema, generated from the Zod schema so they can't drift. */
+const strictJsonSchema = z.toJSONSchema(EvaluationOutput, { target: 'draft-7', io: 'output' }) as JsonSchemaNode;
+
+/** Size limits that make Gemini's constrained decoding reject large schemas ("invalid argument"). */
+const SIZE_KEYWORDS = new Set(['maxItems', 'minItems', 'maxLength', 'minLength', 'maximum', 'minimum']);
+
+function withoutSizeLimits(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(withoutSizeLimits);
+  if (node && typeof node === 'object') {
+    return Object.fromEntries(Object.entries(node).filter(([k]) => !SIZE_KEYWORDS.has(k)).map(([k, v]) => [k, withoutSizeLimits(v)]));
+  }
+  return node;
+}
+
+/**
+ * Schema for Gemini's structured output: same shape, types and enums, but no size limits.
+ * Limits are applied afterwards by clampEvaluation(), then Zod validates strictly.
+ */
+export const evaluationJsonSchema = withoutSizeLimits(strictJsonSchema);
+
+interface JsonSchemaNode {
+  type?: string;
+  properties?: Record<string, JsonSchemaNode>;
+  items?: JsonSchemaNode;
+  maxItems?: number;
+  maxLength?: number;
+}
+
+function clampNode(value: unknown, schema: JsonSchemaNode | undefined): unknown {
+  if (!schema) return value;
+  if (typeof value === 'string' && schema.maxLength !== undefined && value.length > schema.maxLength) {
+    return `${value.slice(0, schema.maxLength - 1).trimEnd()}…`;
+  }
+  if (Array.isArray(value)) {
+    const kept = schema.maxItems !== undefined ? value.slice(0, schema.maxItems) : value;
+    return kept.map((v) => clampNode(v, schema.items));
+  }
+  if (value && typeof value === 'object' && schema.properties) {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, clampNode(v, schema.properties![k])]));
+  }
+  return value;
+}
+
+/** Trims over-long lists and texts to the schema's limits (the model is asked to respect them, but may not). */
+export function clampEvaluation(raw: unknown): unknown {
+  return clampNode(raw, strictJsonSchema);
+}
 
 export interface EvaluationInput {
   scenario: { title: string; kind: string; userRole: string; objective: string; briefing: string; slug: string };
@@ -84,11 +150,22 @@ Rules:
 - Judge only the LEARNER's lines. The AI's lines are context.
 - The transcript was produced by speech recognition. Ignore punctuation and capitalisation, and do not treat likely
   recognition slips (a single wrong-sounding word) as grammar errors unless you are confident.
-- Grammar errors: quote the learner's EXACT words in "original" (copy them from the transcript, only the part that
-  needs fixing plus a little context) and give "corrected" in natural English. Use the learner line number in "turnSeq".
-  Report only real, important mistakes — at most 12 — most important first. Accept correct Indian English usage.
-- Vocabulary: point out words the learner overused (REPEATED), basic words that have better alternatives (UPGRADE,
-  max 3 alternatives, suited to the learner's level), and good word choices (GOOD_USAGE). Do not overwhelm: max 6 items.
+- The learner wants to improve, so be thorough: find every real mistake, not only the big ones.
+- Always quote the learner's EXACT words (copied from the transcript: only the part that needs fixing plus a little
+  context) and use the learner line number as "turnSeq". Never quote the AI.
+- grammarErrors: EVERY real grammar or wrong-word mistake, up to 20, most important first. severity HIGH = changes the
+  meaning or sounds clearly wrong; MEDIUM = noticeable; LOW = small slip. If the same mistake repeats, give at most two
+  examples of it. Accept correct Indian English usage. "corrected" is natural English.
+- phrasing: up to 8 sentences that are grammatically acceptable but unnatural, too literal (word-for-word), or too
+  formal/informal for the situation. "better" is how a fluent speaker would say it; "why" is one short reason. Do not
+  repeat anything already listed in grammarErrors.
+- vocabulary: words the learner overused (REPEATED), basic words with better alternatives (UPGRADE, max 3 alternatives
+  suited to the learner's level) and good word choices (GOOD_USAGE). Max 8 items.
+- conversationMoments: up to 5 specific learner replies that worked against the conversation or the objective:
+  TOO_SHORT (a very short answer where more was expected), MISSED_QUESTION (did not answer what was asked),
+  NO_FOLLOW_UP (missed a natural chance to ask back or keep the conversation going), OFF_TOPIC, ABRUPT_TONE (could
+  sound rude or too direct), UNCLEAR (hard to follow). "youSaid" quotes the learner; "better" is an example reply in
+  English at the learner's level; "why" explains briefly. Only real moments — none is fine for a good conversation.
 - Fluency facts (speech rate, fillers, pauses) are MEASURED and given to you. Use them; do not invent numbers.
   Pauses are normal while thinking — only mention them if they clearly broke the conversation.
 - Never judge accent or pronunciation (you only have text).
@@ -101,9 +178,9 @@ Rules:
   pattern with a tip. Never claim to know what language they were thinking in.
 - goalsAchieved: ids from the goal list that the learner clearly achieved.
 - recommendations: up to 3 next steps; for type SCENARIO use one of the available scenario slugs.
-- Write summary, strengths, focusAreas, rationales, explanations, notes, translationPatterns and recommendation
-  titles/reasons in ${LANGUAGE_NAME[input.feedbackLanguage]}. Keep "original", "corrected", vocabulary terms,
-  alternatives and examples in English.
+- Write summary, strengths, focusAreas, rationales, explanations, "why", notes, translationPatterns and recommendation
+  titles/reasons in ${LANGUAGE_NAME[input.feedbackLanguage]}. Keep "original", "corrected", "better", "youSaid",
+  vocabulary terms, alternatives and examples in English.
 - Be warm, specific and honest. Short sentences. If the learner said very little, say so and keep feedback brief.
 `.trim();
 

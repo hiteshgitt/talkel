@@ -1,15 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
 import { FeedbackSection } from '@/components/feedback';
 import { LEVEL_LABEL } from '@/components/pickers';
+import { TranscriptLine } from '@/components/transcript';
 import { Body, Button, Card, ErrorText, Loading, Screen, Title } from '@/components/ui';
 import { api, friendlyError } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
 import { audioPlaybackAvailable } from '@/lib/runtime';
 import { CONVERSATIONS_KEY, conversationKey, formatMinutes, QUOTA_KEY, useMe } from '@/lib/queries';
-import { colors, radius } from '@/theme';
+import { colors } from '@/theme';
 
 // Loaded only when there is a recording and this app build includes the audio module.
 const RecordingPlayer = lazy(() => import('@/components/recording-player'));
@@ -90,13 +91,7 @@ export default function ConversationScreen() {
       <Text style={styles.sectionTitle}>Transcript</Text>
       {c.turns.length === 0 ? <Body muted>Nothing was said in this conversation.</Body> : null}
       {c.turns.map((t) => (
-        <View key={t.seq} style={[styles.bubble, t.speaker === 'USER' ? styles.user : styles.ai]}>
-          <Text style={styles.speaker}>{t.speaker === 'USER' ? 'You' : c.personaName}</Text>
-          <Text style={styles.text}>
-            {t.text || '…'}
-            {t.interrupted ? <Text style={styles.cut}> — (interrupted)</Text> : null}
-          </Text>
-        </View>
+        <TranscriptLine key={t.seq} turn={t} personaName={c.personaName} feedback={c.feedback} />
       ))}
 
       <Button label="Practise again" onPress={() => router.replace('/practice')} />
@@ -156,10 +151,4 @@ function RecordingSection({ id, inProgress, durationMs }: { id: string; inProgre
 const styles = StyleSheet.create({
   sectionTitle: { color: colors.textMuted, fontSize: 13, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 },
   goal: { color: colors.text, fontSize: 15, lineHeight: 22 },
-  bubble: { borderRadius: radius.md, padding: 12, maxWidth: '88%' },
-  ai: { backgroundColor: colors.surface, alignSelf: 'flex-start' },
-  user: { backgroundColor: colors.surfaceRaised, alignSelf: 'flex-end' },
-  speaker: { color: colors.textMuted, fontSize: 12, marginBottom: 4 },
-  text: { color: colors.text, fontSize: 16, lineHeight: 22 },
-  cut: { color: colors.textMuted, fontSize: 13 },
 });

@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { PRISMA } from '../db/prisma.module.js';
 
 /** Recent conversations count more: exponential moving average weight for the newest one. */
-const ALPHA = 0.35;
+export const ALPHA = 0.35;
 const TOP_ERRORS = 8;
 
 const CommonErrors = z.array(z.object({ category: z.string(), count: z.number(), lastSeenAt: z.string() }));

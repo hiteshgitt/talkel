@@ -26,13 +26,13 @@ export class AnalysisQueue implements OnApplicationShutdown {
     this.queue = new Queue<AnalysisJob>(ANALYSIS_QUEUE_NAME, { connection: this.connection });
   }
 
-  /** One job per conversation (jobId = sessionId), retried with backoff if the AI provider is busy. */
+  /** One job per conversation (jobId = sessionId), retried with backoff (20 s … 5 min, ~10 min in total) if the AI provider is busy. */
   async enqueue(sessionId: string, opts: { force?: boolean } = {}): Promise<void> {
     if (opts.force) await this.queue.remove(sessionId).catch(() => undefined);
     await this.queue.add(
       'analyse',
       { sessionId },
-      { jobId: sessionId, attempts: 4, backoff: { type: 'exponential', delay: 20_000 }, removeOnComplete: 1000, removeOnFail: 1000 },
+      { jobId: sessionId, attempts: 6, backoff: { type: 'exponential', delay: 20_000 }, removeOnComplete: 1000, removeOnFail: 1000 },
     );
     this.logger.log(`queued analysis for ${sessionId}`);
   }

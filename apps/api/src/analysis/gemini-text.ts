@@ -1,6 +1,7 @@
 /**
  * Gemini generateContent with structured JSON output, retries and model fallback.
- * Overload (429/503) and server errors move on to the next model; other errors fail fast.
+ * Overload (429/503) and server errors move on to the next model. A model that is retired or
+ * rejects the request (404/400) is dropped from the rotation; auth errors fail fast.
  */
 export interface StructuredResult {
   text: string;
@@ -35,11 +36,14 @@ export async function generateStructured(
 ): Promise<StructuredResult> {
   const fetchImpl = opts.fetchImpl ?? fetch;
   const sleep = opts.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
-  const attempts = opts.maxAttempts ?? 5;
+  const attempts = opts.maxAttempts ?? Math.max(5, opts.models.length + 2);
+  const models = [...opts.models];
+  const errors: string[] = [];
   let lastError = 'no attempt made';
 
   for (let attempt = 0; attempt < attempts; attempt++) {
-    const model = opts.models[attempt % opts.models.length]!;
+    if (models.length === 0) break;
+    const model = models[attempt % models.length]!;
     const body = {
       systemInstruction: { parts: [{ text: prompt.system }] },
       contents: [{ role: 'user', parts: [{ text: prompt.user }] }],
@@ -61,6 +65,7 @@ export async function generateStructured(
       });
     } catch (err) {
       lastError = `${model}: network ${(err as Error).message}`;
+      errors.push(lastError);
       await sleep(backoff(attempt));
       continue;
     }
@@ -68,8 +73,15 @@ export async function generateStructured(
     const json = (await res.json().catch(() => null)) as GeminiResponse | null;
     if (!res.ok) {
       lastError = `${model}: HTTP ${res.status} ${json?.error?.message ?? ''}`.trim();
+      errors.push(lastError);
       if (res.status === 429 || res.status >= 500) {
         await sleep(backoff(attempt));
+        continue;
+      }
+      if (res.status === 404 || res.status === 400) {
+        // e.g. "no longer available to new users": try the other models straight away.
+        models.splice(models.indexOf(model), 1);
+        attempt--;
         continue;
       }
       throw new EvaluationProviderError(lastError, false);
@@ -82,6 +94,7 @@ export async function generateStructured(
       .join('');
     if (!text) {
       lastError = `${model}: empty response (finishReason=${candidate?.finishReason ?? 'unknown'})`;
+      errors.push(lastError);
       await sleep(backoff(attempt));
       continue;
     }
@@ -91,7 +104,10 @@ export async function generateStructured(
       usage: { inputTokens: json?.usageMetadata?.promptTokenCount ?? 0, outputTokens: json?.usageMetadata?.candidatesTokenCount ?? 0 },
     };
   }
-  throw new EvaluationProviderError(`evaluation failed after ${attempts} attempts; last: ${lastError}`, true);
+  if (models.length === 0) {
+    throw new EvaluationProviderError(`no usable evaluation model: ${errors.join(' | ')}`, false);
+  }
+  throw new EvaluationProviderError(`evaluation failed after ${errors.length} attempts: ${errors.join(' | ')}`, true);
 }
 
 function backoff(attempt: number): number {

@@ -408,6 +408,10 @@ model SessionAnalysis {
   conversationSkills  Json
   /// PRD §43: patterns suggesting word-for-word translation (phrased as patterns, never "you thought in Hindi")
   translationPatterns String[]
+  /// "Say it more naturally" (eval-v2): [{ turnSeq, original, better, why }] — grounded like grammar errors
+  phrasing            Json                @default("[]")
+  /// Replies the learner could have handled better (eval-v2): [{ turnSeq, youSaid, better, why, kind }]
+  conversationMoments Json                @default("[]")
   feedbackLanguage    String
   evalModel           String
   evalPromptVersion   String

@@ -9,6 +9,7 @@ export const colors = {
   userSpeaking: '#4CC38A',
   aiSpeaking: '#6E8BFF',
   danger: '#E5484D',
+  warning: '#E5A93B',
   border: '#2C313B',
 } as const;
 

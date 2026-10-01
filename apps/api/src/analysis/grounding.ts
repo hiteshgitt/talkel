@@ -25,27 +25,36 @@ export interface GroundableError {
 }
 
 /**
- * Keeps corrections that (a) quote the user's actual words from that turn (or, if the model
- * picked the wrong turn, any user turn), and (b) actually change something.
+ * Keeps items that (a) quote the user's actual words from that turn (or, if the model picked the
+ * wrong turn, any user turn), and (b) actually change something.
  */
-export function groundErrors<T extends GroundableError>(errors: readonly T[], userTurns: ReadonlyMap<number, string>): { kept: T[]; dropped: number } {
+export function groundQuoted<T extends { turnSeq: number }>(
+  items: readonly T[],
+  userTurns: ReadonlyMap<number, string>,
+  quote: (item: T) => string,
+  replacement: (item: T) => string,
+): { kept: T[]; dropped: number } {
   const kept: T[] = [];
   let dropped = 0;
-  for (const e of errors) {
-    if (normalize(e.original) === normalize(e.corrected)) {
+  for (const e of items) {
+    if (normalize(quote(e)) === normalize(replacement(e))) {
       dropped++;
       continue;
     }
     const inTurn = userTurns.get(e.turnSeq);
-    if (inTurn !== undefined && quotedIn(e.original, inTurn)) {
+    if (inTurn !== undefined && quotedIn(quote(e), inTurn)) {
       kept.push(e);
       continue;
     }
-    const other = [...userTurns.entries()].find(([, text]) => quotedIn(e.original, text));
+    const other = [...userTurns.entries()].find(([, text]) => quotedIn(quote(e), text));
     if (other) kept.push({ ...e, turnSeq: other[0] });
     else dropped++;
   }
   return { kept, dropped };
+}
+
+export function groundErrors<T extends GroundableError>(errors: readonly T[], userTurns: ReadonlyMap<number, string>): { kept: T[]; dropped: number } {
+  return groundQuoted(errors, userTurns, (e) => e.original, (e) => e.corrected);
 }
 
 /** Band 1–5 → 0–100 in steps of 5 (1→20, 2→40, 3→60, 4→80, 5→95): coarse on purpose (PRD §28, no fake precision). */
