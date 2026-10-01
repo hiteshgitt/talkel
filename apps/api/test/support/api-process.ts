@@ -1,4 +1,6 @@
 import { type ChildProcess, spawn } from 'node:child_process';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 export const TEST_DATABASE_URL =
@@ -12,6 +14,8 @@ export interface ApiProcess {
   base: string;
   origin: string;
   proc: ChildProcess;
+  /** Temporary folder holding this server's recordings and call logs. */
+  dataDir: string;
   /** Everything the server has printed so far (emails are logged when SMTP_URL is empty). */
   output(): string;
   stop(): void;
@@ -23,6 +27,8 @@ export interface ApiProcess {
  */
 export async function startApi(env: Record<string, string> = {}): Promise<ApiProcess> {
   const port = String(20000 + Math.floor(Math.random() * 20000));
+  // Recordings and call logs go to a throw-away folder, never the developer's storage.
+  const dataDir = mkdtempSync(join(tmpdir(), 'talkel-e2e-'));
   const origin = `http://127.0.0.1:${port}`;
   const proc = spawn(process.execPath, ['dist/main.js'], {
     cwd: join(import.meta.dirname, '..', '..'),
@@ -37,6 +43,8 @@ export async function startApi(env: Record<string, string> = {}): Promise<ApiPro
       POC_DEV_TOKEN: DEV_TOKEN,
       SMTP_URL: '',
       REDIS_URL: TEST_REDIS_URL,
+      RECORDINGS_DIR: join(dataDir, 'recordings'),
+      CALL_LOG_DIR: join(dataDir, 'calls'),
       ...env,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -49,7 +57,7 @@ export async function startApi(env: Record<string, string> = {}): Promise<ApiPro
   for (let i = 0; i < 150; i++) {
     try {
       if ((await fetch(`${base}/health`)).ok) {
-        return { base, origin, proc, output: () => output, stop: () => proc.kill() };
+        return { base, origin, proc, dataDir, output: () => output, stop: () => proc.kill() };
       }
     } catch {
       /* not up yet */

@@ -5,7 +5,7 @@ export function AuthShell({ title, subtitle, children }: { title: string; subtit
     <main className="flex flex-1 items-center justify-center px-4 py-12">
       <div className="w-full max-w-sm space-y-6">
         <div className="space-y-2">
-          <p className="text-sm font-bold tracking-widest text-accent">SPEAKAI</p>
+          <p className="text-sm font-bold tracking-widest text-accent">TALKEL</p>
           <h1 className="text-3xl font-bold text-fg">{title}</h1>
           {subtitle ? <p className="text-muted">{subtitle}</p> : null}
         </div>

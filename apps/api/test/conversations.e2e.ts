@@ -4,8 +4,10 @@
  */
 import { CONSENT_VERSION, MemoryList, MissionList, MistakeList, Progress, SayItResult } from '@speakai/contracts';
 import type { Catalog, ConversationDetail, ConversationList, CreateConversationResponse, Quota } from '@speakai/contracts';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { type ApiProcess, startApi, startWorker } from './support/api-process.js';
+import { type ApiProcess, startApi, startWorker, WEB_ORIGIN } from './support/api-process.js';
 import { createFakePhone } from './support/fake-phone.js';
 import { type FakeGemini, startFakeGemini } from './support/fake-gemini.js';
 import { sql, verifiedUser } from './support/users.js';
@@ -509,6 +511,61 @@ describe('personal memory', () => {
     expect(MemoryList.parse(await (await get('/me/memories', alice)).json()).items.length).toBeGreaterThan(0);
     await fetch(`${api.base}/me/settings`, { method: 'PATCH', headers: { Cookie: alice, 'Content-Type': 'application/json' }, body: JSON.stringify({ memoryEnabled: false }) });
     expect(MemoryList.parse(await (await get('/me/memories', alice)).json())).toEqual({ enabled: false, items: [] });
+  });
+});
+
+describe('your data (DPDP)', () => {
+  it('exports everything as one JSON file, without hidden scenario data', async () => {
+    const res = await get('/me/export', alice);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-disposition')).toMatch(/^attachment; filename="talkel-data-\d{4}-\d{2}-\d{2}\.json"$/);
+    const data = (await res.json()) as {
+      account: { email: string; signInMethods: string[] };
+      conversations: ConversationDetail[];
+      missionProgress: Array<{ mission: string }>;
+      memories: unknown[];
+    };
+    expect(data.account).toMatchObject({ email: 'alice.conv@example.com', signInMethods: ['credential'] });
+    expect(data.conversations.length).toBeGreaterThan(3);
+    expect(data.conversations.some((c) => c.turns.length > 0 && c.feedback)).toBe(true);
+    expect(data.missionProgress.some((m) => m.mission === 'mission-bargain')).toBe(true);
+    expect(JSON.stringify(data)).not.toMatch(/floorPrice|ceiling|promptTemplate|systemInstruction/);
+    expect((await fetch(`${api.base}/me/export`)).status).toBe(401);
+  });
+
+  it('deletes the account and everything in it — database rows and files', async () => {
+    const [user] = await sql<{ id: string }>('SELECT id FROM users WHERE email = $1', ['alice.conv@example.com']);
+    const userId = user!.id;
+    const sessions = await sql<{ id: string }>('SELECT id FROM conversation_sessions WHERE "userId" = $1', [userId]);
+    const logs = sessions.map((s) => join(api.dataDir, 'calls', `${s.id}.jsonl`)).filter((f) => existsSync(f));
+    expect(logs.length).toBeGreaterThan(0);
+    const recordings = join(api.dataDir, 'recordings', userId);
+    mkdirSync(recordings, { recursive: true });
+    writeFileSync(join(recordings, 'leftover.ogg'), 'x');
+
+    const me = (await (await get('/me', alice)).json()) as { user: { hasPassword: boolean } };
+    expect(me.user.hasPassword).toBe(true);
+
+    const del = (password: string) =>
+      fetch(`${api.base}/auth/delete-user`, {
+        method: 'POST',
+        headers: { Cookie: alice, 'Content-Type': 'application/json', Origin: WEB_ORIGIN },
+        body: JSON.stringify({ password }),
+      });
+    expect((await del('wrong-password-1')).status).toBe(400);
+    const ok = await del('correct-horse-9');
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toMatchObject({ success: true, message: 'User deleted' });
+
+    expect((await get('/me', alice)).status).toBe(401);
+    for (const table of ['users', 'conversation_sessions', 'user_memories', 'mission_progress', 'usage_records', 'grammar_errors', 'learning_profiles']) {
+      const column = table === 'users' ? 'id' : '"userId"';
+      const [row] = await sql<{ n: string }>(`SELECT count(*) AS n FROM ${table} WHERE ${column} = $1`, [userId]);
+      expect(`${table}: ${row!.n}`).toBe(`${table}: 0`);
+    }
+    expect(existsSync(recordings)).toBe(false);
+    expect(logs.filter((f) => existsSync(f))).toEqual([]);
+    expect(api.output()).toContain('Your Talkel account has been deleted');
   });
 });
 

@@ -20,8 +20,11 @@ export class UsersService {
   constructor(@Inject(PRISMA) private readonly prisma: PrismaClient) {}
 
   async me(userId: string): Promise<Me> {
-    const { user, profile, settings } = await this.load(userId);
-    return toMe(user, profile, settings);
+    const [{ user, profile, settings }, passwords] = await Promise.all([
+      this.load(userId),
+      this.prisma.account.count({ where: { userId, providerId: 'credential' } }),
+    ]);
+    return toMe(user, profile, settings, passwords > 0);
   }
 
   async completeOnboarding(userId: string, req: OnboardingRequest): Promise<Me> {
@@ -97,7 +100,7 @@ export class UsersService {
   }
 }
 
-function toMe(user: User, profile: Profile, settings: UserSettings): Me {
+function toMe(user: User, profile: Profile, settings: UserSettings, hasPassword: boolean): Me {
   return {
     user: {
       id: user.id,
@@ -106,6 +109,7 @@ function toMe(user: User, profile: Profile, settings: UserSettings): Me {
       emailVerified: user.emailVerified,
       role: UserRole.catch('user').parse(user.role),
       plan: Plan.catch('FREE').parse(user.plan),
+      hasPassword,
     },
     entitlements: entitlementsFor(user.plan),
     profile: {

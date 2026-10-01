@@ -93,6 +93,8 @@ Allowed only when status ∈ {CREATED, RECONNECTING} and within TTL. Errors: `SE
 | Method | Path | Response |
 |---|---|---|
 | GET | `/progress` | Totals, smoothed skill scores (incl. clarity), per-conversation history (last 20), streak + 28-day practice calendar (user's time zone), confidence indicators (recent 3 vs previous 3 conversations), common mistakes with trend, fillers, recent corrections |
+| GET | `/me/export` | All of the user's data as a JSON attachment (DPDP access) |
+| POST | `/auth/delete-user` | Better Auth: `{ password }` (or a fresh session) → deletes the account and all data, incl. recordings and call logs |
 | GET | `/me/memories` | Personal memory: `{ enabled, items[] }` |
 | DELETE | `/me/memories/:id` · `/me/memories` | Forget one item · everything (also: `PATCH /me/settings { memoryEnabled: false }`) |
 | GET | `/missions` | Missions (objectives, AI character, skills — never prompts, secrets or outcome rules) with the user's level progress |

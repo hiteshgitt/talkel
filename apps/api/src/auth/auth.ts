@@ -3,7 +3,8 @@ import type { PrismaClient } from '@speakai/db';
 import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import type { Env } from '../config/env.js';
-import { type Mailer, resetPasswordEmail, verificationEmail } from '../mail/mailer.js';
+import { purgeUserFiles } from '../account/account-cleanup.js';
+import { accountDeletedEmail, type Mailer, resetPasswordEmail, verificationEmail } from '../mail/mailer.js';
 
 export const AUTH_BASE_PATH = '/v1/auth';
 /** Internal header carrying the real client IP to Better Auth (rate limits, session metadata). */
@@ -57,6 +58,16 @@ export function createAuth({ env, prisma, mailer }: AuthDeps) {
       additionalFields: {
         role: { type: 'string', required: false, defaultValue: 'user', input: false },
       },
+      // DPDP: users can delete their account themselves (password, or a recent sign-in for Google accounts).
+      deleteUser: {
+        enabled: true,
+        beforeDelete: async (user) => {
+          await purgeUserFiles(prisma, { recordingsDir: env.RECORDINGS_DIR, callLogDir: env.CALL_LOG_DIR }, user.id);
+        },
+        afterDelete: async (user) => {
+          await mailer.send(accountDeletedEmail(user.email, user.name, env.WEB_BASE_URL));
+        },
+      },
     },
     session: {
       expiresIn: 60 * 60 * 24 * 30, // 30 days
@@ -71,6 +82,7 @@ export function createAuth({ env, prisma, mailer }: AuthDeps) {
         '/sign-up/email': { window: 3600, max: 10 },
         '/request-password-reset': { window: 3600, max: 5 },
         '/send-verification-email': { window: 3600, max: 5 },
+        '/delete-user': { window: 3600, max: 5 },
       },
     },
     advanced: {

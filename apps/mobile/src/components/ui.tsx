@@ -17,17 +17,38 @@ import { haptic } from '@/lib/haptics';
 import type { IconName } from '@/lib/visuals';
 import { makeStyles, radius, useColors } from '@/theme';
 
-export function Screen({ children, scroll = true, style, edges = ['top', 'bottom'] }: { children: ReactNode; scroll?: boolean; style?: ViewStyle; edges?: ('top' | 'bottom')[] }) {
+export function Screen({
+  children,
+  scroll = true,
+  style,
+  edges = ['top', 'bottom'],
+  footer,
+}: {
+  children: ReactNode;
+  scroll?: boolean;
+  style?: ViewStyle;
+  edges?: ('top' | 'bottom')[];
+  /**
+   * Pinned below the scrolling content (primary actions). Keeps buttons visible, and avoids an
+   * Android issue where taps miss buttons at the end of a list that shrank while scrolled down.
+   */
+  footer?: ReactNode;
+}) {
   const s = useStyles();
   return (
     <SafeAreaView style={s.screen} edges={edges}>
       {scroll ? (
-        <ScrollView contentContainerStyle={[s.content, style]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <ScrollView
+          contentContainerStyle={[s.content, style]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
           {children}
         </ScrollView>
       ) : (
         <View style={[s.content, s.fill, style]}>{children}</View>
       )}
+      {footer ? <View style={s.footer}>{footer}</View> : null}
     </SafeAreaView>
   );
 }
@@ -76,11 +97,15 @@ export function Button(props: {
   const s = useStyles();
   const c = useColors();
   const variant = props.variant ?? 'primary';
-  const disabled = props.disabled || props.loading;
+  // Always explicit booleans: on Android, "disabled" going from true to undefined never re-enabled
+  // the native view, so a button that started disabled (e.g. onboarding's Continue) ignored taps.
+  const disabled = Boolean(props.disabled || props.loading);
   const solid = variant === 'primary' || variant === 'danger';
   const textColor = props.disabled && !props.loading && variant !== 'ghost' ? c.textFaint : solid ? c.onAccent : variant === 'ghost' ? c.accent : c.text;
   return (
     <Pressable
+      // A fresh native view when it switches between disabled and enabled (see `disabled` above).
+      key={disabled ? 'disabled' : 'enabled'}
       onPress={() => {
         if (solid) haptic.tap();
         props.onPress();
@@ -88,7 +113,7 @@ export function Button(props: {
       disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={props.label}
-      accessibilityState={{ disabled, busy: props.loading }}
+      accessibilityState={{ disabled, busy: Boolean(props.loading) }}
       style={({ pressed }) => [
         s.button,
         props.compact && s.buttonCompact,
@@ -164,9 +189,9 @@ export function Choice(props: {
           haptic.select();
           props.onPress();
         }}
-        disabled={props.disabled}
+        disabled={Boolean(props.disabled)}
         accessibilityRole={role}
-        accessibilityState={{ selected: props.selected, checked: props.selected, disabled: props.disabled }}
+        accessibilityState={{ selected: props.selected, checked: props.selected, disabled: Boolean(props.disabled) }}
         style={({ pressed }) => [s.chip, props.selected && s.chipSelected, (pressed || props.disabled) && s.pressed]}
       >
         {props.icon ? <Ionicons name={props.icon} size={16} color={props.selected ? c.accent : c.textMuted} /> : null}
@@ -181,9 +206,9 @@ export function Choice(props: {
         haptic.select();
         props.onPress();
       }}
-      disabled={props.disabled}
+      disabled={Boolean(props.disabled)}
       accessibilityRole={role}
-      accessibilityState={{ selected: props.selected, checked: props.selected, disabled: props.disabled }}
+      accessibilityState={{ selected: props.selected, checked: props.selected, disabled: Boolean(props.disabled) }}
       style={({ pressed }) => [s.choice, props.selected && s.choiceSelected, (pressed || props.disabled) && s.pressed]}
     >
       {props.icon ? <Ionicons name={props.icon} size={22} color={props.selected ? c.accent : c.textMuted} /> : null}
@@ -324,6 +349,7 @@ const useStyles = makeStyles((c) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: c.bg },
     content: { padding: 20, paddingBottom: 36, gap: 16 },
+    footer: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 8, gap: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.border, backgroundColor: c.bg },
     fill: { flex: 1 },
     center: { alignItems: 'center', justifyContent: 'center' },
     title: { color: c.text, fontSize: 28, fontWeight: '800', letterSpacing: -0.5 },

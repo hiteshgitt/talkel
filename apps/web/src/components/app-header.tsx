@@ -7,11 +7,14 @@ export function AppHeader({ me }: { me: Me }) {
     <header className="border-b border-line">
       <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4">
         <Link href="/dashboard" className="text-sm font-bold tracking-widest text-accent">
-          SPEAKAI
+          TALKEL
         </Link>
         <nav className="flex items-center gap-5 text-sm">
           <Link href="/dashboard" className="text-muted hover:text-fg">
             Dashboard
+          </Link>
+          <Link href="/account" className="text-muted hover:text-fg">
+            Account
           </Link>
           {me.user.role === 'admin' ? (
             <Link href="/admin" className="text-muted hover:text-fg">

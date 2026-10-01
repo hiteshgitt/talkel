@@ -85,6 +85,7 @@ function AppNavigator() {
         <Stack.Screen name="mistakes/[category]" />
         <Stack.Screen name="mission/[id]" />
         <Stack.Screen name="memories" />
+        <Stack.Screen name="delete-account" />
       </Stack.Protected>
     </Stack>
   );

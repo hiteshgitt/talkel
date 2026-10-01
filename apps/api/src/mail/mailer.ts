@@ -69,6 +69,20 @@ export function resetPasswordEmail(to: string, name: string, url: string): Email
   };
 }
 
+export function accountDeletedEmail(to: string, name: string, url: string): EmailMessage {
+  return {
+    to,
+    subject: 'Your Talkel account has been deleted',
+    text: `Hi ${name},\n\nYour Talkel account and all its data (conversations, feedback, recordings and memories) have been deleted.\n\nIf this wasn't you, reply to this email right away.\nYou're always welcome back: ${url}`,
+    html: layout(
+      'Your account has been deleted',
+      `Hi ${escapeHtml(name)}, your Talkel account and all its data — conversations, feedback, recordings and memories — have been deleted. If this wasn't you, reply to this email right away.`,
+      'Visit Talkel',
+      url,
+    ),
+  };
+}
+
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }

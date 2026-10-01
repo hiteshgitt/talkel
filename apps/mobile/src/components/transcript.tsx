@@ -101,7 +101,7 @@ export function TranscriptLine({
           {onReplay ? (
             <Pressable
               onPress={onReplay}
-              disabled={replaying}
+              disabled={Boolean(replaying)}
               accessibilityRole="button"
               style={({ pressed }) => [styles.replay, (pressed || replaying) && styles.pressed]}
             >

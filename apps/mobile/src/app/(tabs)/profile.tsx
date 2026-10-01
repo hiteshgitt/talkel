@@ -3,6 +3,7 @@ import type { FeedbackLanguage, VoiceGender } from '@speakai/contracts';
 import { useQueryClient } from '@tanstack/react-query';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { IconBadge } from '@/components/art';
@@ -11,6 +12,7 @@ import { LEVEL_LABEL } from '@/components/pickers';
 import { Badge, Button, Card, Choice, ErrorText, ListRow, Screen, Title } from '@/components/ui';
 import { MEMORIES_KEY, MEMORY_EXPLAINER, useMemories } from '@/lib/memory';
 import { authClient } from '@/lib/auth-client';
+import { WEB_URL } from '@/lib/config';
 import { useMe, useUpdateSettings } from '@/lib/queries';
 import { makeStyles, useColors } from '@/theme';
 
@@ -111,6 +113,28 @@ export default function ProfileScreen() {
         </View>
       </Card>
       <ErrorText>{update.error instanceof Error ? update.error.message : null}</ErrorText>
+
+      <Card>
+        <View style={s.settingHead}>
+          <IconBadge name="shield-checkmark-outline" tint={c.success} />
+          <View style={s.flex}>
+            <Text style={s.settingTitle}>Your data</Text>
+            <Text style={s.settingHint}>Get a copy of everything, or delete your account.</Text>
+          </View>
+        </View>
+        <ListRow
+          leading={<Ionicons name="download-outline" size={20} color={c.accent} />}
+          title="Download my data"
+          subtitle="Opens your Talkel account on the web"
+          onPress={() => void WebBrowser.openBrowserAsync(`${WEB_URL}/account`)}
+        />
+        <ListRow
+          leading={<Ionicons name="trash-outline" size={20} color={c.danger} />}
+          title="Delete account"
+          subtitle="Permanently delete your account and all data"
+          onPress={() => router.push('/delete-account')}
+        />
+      </Card>
 
       <Pressable onPress={() => void signOut()} disabled={signingOut} accessibilityRole="button" style={({ pressed }) => [s.signOut, pressed && s.pressed]}>
         {signingOut ? <ActivityIndicator color={c.danger} /> : <Ionicons name="log-out-outline" size={20} color={c.danger} />}

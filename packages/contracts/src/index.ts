@@ -70,6 +70,8 @@ export const Me = z.object({
     emailVerified: z.boolean(),
     role: UserRole,
     plan: Plan,
+    /** False for accounts that only sign in with Google (account deletion then needs a recent sign-in). */
+    hasPassword: z.boolean(),
   }),
   /** What the plan allows. Free: the partner's voice and accent are chosen at random. */
   entitlements: z.object({ choosePartner: z.boolean(), chooseAccent: z.boolean() }),

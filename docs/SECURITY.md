@@ -79,3 +79,12 @@
 - Every new or updated item is shown in that conversation's feedback ("Talkel will remember"), and the user can view and
   delete items individually or all at once.
 
+## 2d. Data access and account deletion (added 2026-10-01)
+
+- Access: `GET /v1/me/export` returns everything stored about the user as one JSON file (no hidden scenario values, prompts
+  or other users' data). Recordings are listed per conversation, not embedded.
+- Erasure: Better Auth `delete-user` with the account password (or a session younger than a day for Google-only accounts),
+  rate-limited to 5/hour. All user tables cascade from `users` at the database level; `purgeUserFiles` deletes the user's
+  recordings folder and call logs first, and refuses while a call is live. All sessions are revoked and a confirmation email
+  is sent. Covered by an e2e test that checks every user table and the files afterwards.
+

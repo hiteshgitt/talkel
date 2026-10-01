@@ -291,7 +291,7 @@ function RoundButton(props: {
     <View style={styles.roundWrap}>
       <Pressable
         onPress={props.onPress}
-        disabled={props.disabled}
+        disabled={Boolean(props.disabled)}
         accessibilityRole="button"
         accessibilityLabel={props.label}
         accessibilityState={{ selected: props.active, disabled: props.disabled }}

@@ -6,7 +6,7 @@ import {
 } from '@speakai/contracts';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { BrandMark } from '@/components/art';
 import { PrivacyNotice } from '@/components/privacy-notice';
 import { Body, Button, Choice, ErrorText, ProgressBar, Screen, Title } from '@/components/ui';
@@ -60,8 +60,34 @@ export default function OnboardingScreen() {
   const back = () => setStep(STEPS[index - 1] ?? step);
   const toggleGoal = (g: LearningGoal) => setGoals((cur) => (cur.includes(g) ? cur.filter((x) => x !== g) : [...cur, g]));
 
+  const back_ = <Button label="Back" variant="ghost" onPress={back} />;
+  const footer =
+    step === 'level' ? (
+      <>
+        {!level ? <Text style={styles.hint}>Choose one to continue.</Text> : null}
+        <Button label="Continue" icon="arrow-forward" onPress={next} disabled={!level} />
+      </>
+    ) : step === 'goals' ? (
+      <>
+        {goals.length === 0 ? <Text style={styles.hint}>Choose at least one to continue.</Text> : null}
+        <Button label="Continue" icon="arrow-forward" onPress={next} disabled={goals.length === 0} />
+        {back_}
+      </>
+    ) : step === 'language' ? (
+      <>
+        <Button label="Continue" icon="arrow-forward" onPress={next} />
+        {back_}
+      </>
+    ) : (
+      <>
+        {!consent ? <Text style={styles.hint}>Tick “I agree” to continue.</Text> : null}
+        <Button label="Start practising" icon="mic" onPress={() => submit.mutate()} loading={submit.isPending} disabled={!consent || !level} />
+        {back_}
+      </>
+    );
+
   return (
-    <Screen style={{ paddingTop: 20 }}>
+    <Screen style={{ paddingTop: 20 }} footer={footer}>
       <View style={styles.progress}>
         {index === 0 ? <BrandMark size={44} /> : null}
         <Body muted>
@@ -77,8 +103,6 @@ export default function OnboardingScreen() {
           {LEVELS.map((l) => (
             <Choice key={l.id} icon={l.icon} label={l.label} description={l.description} selected={level === l.id} onPress={() => setLevel(l.id)} />
           ))}
-          {!level ? <Body muted>Choose one to continue.</Body> : null}
-          <Button label="Continue" icon="arrow-forward" onPress={next} disabled={!level} />
         </>
       )}
 
@@ -91,9 +115,6 @@ export default function OnboardingScreen() {
               <Choice key={g.id} compact role="checkbox" icon={g.icon} label={g.label} selected={goals.includes(g.id)} onPress={() => toggleGoal(g.id)} />
             ))}
           </View>
-          {goals.length === 0 ? <Body muted>Choose at least one to continue.</Body> : null}
-          <Button label="Continue" icon="arrow-forward" onPress={next} disabled={goals.length === 0} />
-          <Button label="Back" variant="ghost" onPress={back} />
         </>
       )}
 
@@ -104,8 +125,6 @@ export default function OnboardingScreen() {
           {LANGUAGES.map((l) => (
             <Choice key={l.id} icon={l.icon} label={l.label} description={l.description} selected={language === l.id} onPress={() => setLanguage(l.id)} />
           ))}
-          <Button label="Continue" icon="arrow-forward" onPress={next} />
-          <Button label="Back" variant="ghost" onPress={back} />
         </>
       )}
 
@@ -120,10 +139,7 @@ export default function OnboardingScreen() {
             selected={consent}
             onPress={() => setConsent((c) => !c)}
           />
-          {!consent ? <Body muted>Tick “I agree” to continue.</Body> : null}
           <ErrorText>{submit.error instanceof Error ? submit.error.message : null}</ErrorText>
-          <Button label="Start practising" icon="mic" onPress={() => submit.mutate()} loading={submit.isPending} disabled={!consent || !level} />
-          <Button label="Back" variant="ghost" onPress={back} />
         </>
       )}
     </Screen>
@@ -133,4 +149,5 @@ export default function OnboardingScreen() {
 const styles = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   progress: { gap: 10, marginBottom: 4 },
+  hint: { color: '#8A909C', fontSize: 13, textAlign: 'center', marginBottom: 4 },
 });

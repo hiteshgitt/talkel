@@ -12,9 +12,14 @@ function SignInForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(params.get('reset') ? 'Password changed. Sign in with your new password.' : null);
+  const [notice, setNotice] = useState<string | null>(
+    params.get('deleted') ? 'Your account has been deleted. Thank you for practising with Talkel.' : params.get('reset') ? 'Password changed. Sign in with your new password.' : null,
+  );
   const [notVerified, setNotVerified] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Where to go after signing in: only same-site paths (never another origin).
+  const nextParam = params.get('next');
+  const next = nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//') ? nextParam : '/dashboard';
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -24,7 +29,7 @@ function SignInForm() {
     const { error: err } = await authClient.signIn.email({ email: email.trim(), password });
     setBusy(false);
     if (!err) {
-      router.replace('/dashboard');
+      router.replace(next);
       router.refresh();
       return;
     }
