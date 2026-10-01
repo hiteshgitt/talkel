@@ -3,6 +3,7 @@ import { join, resolve } from 'node:path';
 import type { PrismaClient } from '@speakai/db';
 import { APIError } from 'better-auth/api';
 import { z } from 'zod';
+import type { RecordingStore } from '../recording/recording-store.js';
 
 const LIVE = ['CONNECTING', 'ACTIVE', 'RECONNECTING'] as const;
 
@@ -12,7 +13,7 @@ const LIVE = ['CONNECTING', 'ACTIVE', 'RECONNECTING'] as const;
  */
 export async function purgeUserFiles(
   prisma: PrismaClient,
-  dirs: { recordingsDir: string; callLogDir: string },
+  files: { recordings: RecordingStore; callLogDir: string },
   userId: string,
 ): Promise<void> {
   if (!z.string().uuid().safeParse(userId).success) throw new Error('invalid user id');
@@ -20,7 +21,7 @@ export async function purgeUserFiles(
   if (live > 0) throw new APIError('BAD_REQUEST', { message: 'Please end your call before deleting your account.' });
 
   const sessions = await prisma.conversationSession.findMany({ where: { userId }, select: { id: true } });
-  await Promise.all(sessions.map((s) => rm(join(resolve(dirs.callLogDir), `${s.id}.jsonl`), { force: true })));
-  // Recording keys are "<userId>/<conversationId>.ogg", so one folder holds all of a user's recordings.
-  await rm(join(resolve(dirs.recordingsDir), userId), { recursive: true, force: true });
+  await Promise.all(sessions.map((s) => rm(join(resolve(files.callLogDir), `${s.id}.jsonl`), { force: true })));
+  // Recording keys are "<userId>/<conversationId>.ogg": one prefix (disk folder or R2) per user.
+  await files.recordings.removeUser(userId);
 }

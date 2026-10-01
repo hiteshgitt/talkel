@@ -23,6 +23,13 @@ const EnvSchema = z.object({
   GOOGLE_CLIENT_SECRET: optionalSecret,
   /** e.g. smtp://localhost:1027 (Mailpit in dev). Empty: emails are written to the log instead. */
   SMTP_URL: optionalSecret,
+  /** Run the after-call analysis worker inside the API process (single always-on service, e.g. Cloud Run). */
+  RUN_WORKER_IN_API: z
+    .string()
+    .optional()
+    .transform((v) => v === 'true' || v === '1'),
+  /** Production email (Resend). Used when SMTP_URL is not set; SMTP (Mailpit) wins in development. */
+  RESEND_API_KEY: optionalSecret,
   EMAIL_FROM: z.string().min(3).default('Talkel <no-reply@talkel.local>'),
   /**
    * gemini: phone ⇄ our WebRTC gateway ⇄ Gemini Live (WebSocket).
@@ -40,8 +47,27 @@ const EnvSchema = z.object({
   EVAL_MODELS: z.string().min(1).default('gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash,gemini-flash-latest'),
   /** Redis for the job queue (after-call analysis). */
   REDIS_URL: z.string().min(1).default('redis://localhost:6381'),
+  /** Comma-separated extra web origins allowed to use sign-in (e.g. a staging tunnel URL). */
+  EXTRA_TRUSTED_ORIGINS: z
+    .string()
+    .optional()
+    .transform((v) => (v ?? '').split(',').map((o) => o.trim()).filter(Boolean)),
+  /** Where the analysis queue lives: Redis/BullMQ (default) or the database (no Redis; Cloud Run free tier). */
+  QUEUE_DRIVER: z.enum(['redis', 'postgres']).default('redis'),
   /** Comma-separated STUN/TURN URLs for the server-side WebRTC endpoint (gemini mode). */
   RTC_ICE_SERVERS: z.string().default('stun:stun.l.google.com:19302'),
+  /** Cloudflare Realtime TURN key (production): media relays through TURN. */
+  TURN_KEY_ID: optionalSecret,
+  TURN_KEY_API_TOKEN: optionalSecret,
+  /** Any TURN provider with fixed credentials (e.g. metered.ca free plan): comma-separated turn:/turns: URLs. */
+  RTC_TURN_URLS: optionalSecret,
+  RTC_TURN_USERNAME: optionalSecret,
+  RTC_TURN_CREDENTIAL: optionalSecret,
+  /** Only use relayed (TURN) candidates on the server side — required where inbound UDP is impossible (Cloud Run). */
+  RTC_RELAY_ONLY: z
+    .string()
+    .optional()
+    .transform((v) => v === 'true' || v === '1'),
   /** UDP port range for call media (gemini mode), so a firewall rule can be precise. "min-max". */
   RTC_UDP_PORT_RANGE: z
     .string()
@@ -70,6 +96,21 @@ const EnvSchema = z.object({
   CALL_LOG_DIR: z.string().min(1).default('./logs/calls'),
   /** Local call-recordings directory (development). Production uses S3-compatible storage. */
   RECORDINGS_DIR: z.string().min(1).default('./storage/recordings'),
+  /**
+   * Recordings in S3-compatible storage (production): Supabase Storage (S3_*) or Cloudflare R2 (R2_*).
+   * Without either, recordings go to RECORDINGS_DIR on disk.
+   */
+  S3_ENDPOINT: optionalSecret,
+  S3_REGION: optionalSecret,
+  S3_BUCKET: optionalSecret,
+  S3_ACCESS_KEY_ID: optionalSecret,
+  S3_SECRET_ACCESS_KEY: optionalSecret,
+  R2_ACCOUNT_ID: optionalSecret,
+  /** Override the S3 endpoint (e.g. a local MinIO in tests). */
+  R2_ENDPOINT: optionalSecret,
+  R2_ACCESS_KEY_ID: optionalSecret,
+  R2_SECRET_ACCESS_KEY: optionalSecret,
+  R2_BUCKET: optionalSecret,
 });
 
 export type Env = z.infer<typeof EnvSchema>;

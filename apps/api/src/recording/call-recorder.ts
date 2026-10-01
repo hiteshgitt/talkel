@@ -1,4 +1,4 @@
-import type { WriteStream } from 'node:fs';
+import type { Writable } from 'node:stream';
 import OpusScript from 'opusscript';
 import { OggOpusWriter } from './ogg-opus-writer.js';
 import { MIX_RATE, RecordingMixer } from './recording-mixer.js';
@@ -25,7 +25,7 @@ export class CallRecorder {
   private bytes = 0;
   private closed = false;
 
-  constructor(private readonly out: WriteStream) {
+  constructor(private readonly out: Writable) {
     this.encoder.setBitrate(STORAGE_BITRATE);
     this.encoder.encoderCTL(OPUS_SET_COMPLEXITY_REQUEST, 10);
     this.writer = new OggOpusWriter(

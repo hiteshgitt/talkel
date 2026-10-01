@@ -10,14 +10,17 @@ import { CatalogController } from './conversations/catalog.controller.js';
 import { ConversationsController } from './conversations/conversations.controller.js';
 import { ConversationsService } from './conversations/conversations.service.js';
 import { QuotaService } from './conversations/quota.service.js';
-import { AnalysisQueue } from './analysis/analysis-queue.js';
+import { AnalysisQueue, DbAnalysisQueue, RedisAnalysisQueue } from './analysis/analysis-queue.js';
 import { ProgressController } from './analysis/progress.controller.js';
 import { MissionsController } from './missions/missions.controller.js';
 import { RephraseService } from './analysis/rephrase.service.js';
+import { AnalysisService } from './analysis/analysis.service.js';
 import { MemoryController } from './users/memory.controller.js';
 import { ExportController } from './account/export.controller.js';
+import { IceServers } from './rtc/ice-servers.js';
+import { RtcController } from './rtc/rtc.controller.js';
 import { LearningProfileService } from './analysis/learning-profile.service.js';
-import { LocalRecordingStore, RECORDING_STORE } from './recording/recording-store.js';
+import { createRecordingStore, RECORDING_STORE } from './recording/recording-store.js';
 import { UsersController } from './users/users.controller.js';
 import { UsersService } from './users/users.service.js';
 
@@ -47,15 +50,21 @@ export class AppModule {
         PrismaModule,
         AuthModule,
       ],
-      controllers: [HealthController, UsersController, AdminController, CatalogController, ConversationsController, ProgressController, MissionsController, MemoryController, ExportController],
+      controllers: [HealthController, UsersController, AdminController, CatalogController, ConversationsController, ProgressController, MissionsController, MemoryController, ExportController, RtcController],
       providers: [
         UsersService,
         QuotaService,
         ConversationsService,
-        AnalysisQueue,
+        {
+          provide: AnalysisQueue,
+          useFactory: (prisma: PrismaClient) => (env.QUEUE_DRIVER === 'postgres' ? new DbAnalysisQueue(prisma) : new RedisAnalysisQueue(env.REDIS_URL)),
+          inject: [PRISMA],
+        },
         LearningProfileService,
+        AnalysisService,
         RephraseService,
-        { provide: RECORDING_STORE, useFactory: () => new LocalRecordingStore(env.RECORDINGS_DIR) },
+        IceServers,
+        { provide: RECORDING_STORE, useFactory: () => createRecordingStore(env) },
       ],
     };
   }

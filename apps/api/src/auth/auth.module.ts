@@ -4,7 +4,7 @@ import type { PrismaClient } from '@speakai/db';
 import type { AuthConfig } from '@speakai/contracts';
 import { ENV, type Env } from '../config/env.js';
 import { PRISMA } from '../db/prisma.module.js';
-import { LogMailer, MAILER, type Mailer, SmtpMailer } from '../mail/mailer.js';
+import { LogMailer, MAILER, type Mailer, ResendMailer, SmtpMailer } from '../mail/mailer.js';
 import { Public } from './auth.decorators.js';
 import { createAuth } from './auth.js';
 import { AUTH, SessionGuard } from './session.guard.js';
@@ -27,7 +27,13 @@ class AuthConfigController {
   providers: [
     {
       provide: MAILER,
-      useFactory: (env: Env): Mailer => (env.SMTP_URL ? new SmtpMailer(env.SMTP_URL, env.EMAIL_FROM) : new LogMailer()),
+      // Development: SMTP (Mailpit). Production: Resend. Neither: log the email (tests).
+      useFactory: (env: Env): Mailer =>
+        env.SMTP_URL
+          ? new SmtpMailer(env.SMTP_URL, env.EMAIL_FROM)
+          : env.RESEND_API_KEY
+            ? new ResendMailer(env.RESEND_API_KEY, env.EMAIL_FROM)
+            : new LogMailer(),
       inject: [ENV],
     },
     {

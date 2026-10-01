@@ -44,6 +44,7 @@ import { AnalysisQueue } from '../analysis/analysis-queue.js';
 import { LearningProfileService } from '../analysis/learning-profile.service.js';
 import { QuotaService } from './quota.service.js';
 import { entitlementsFor } from '../users/users.service.js';
+import { IceServers } from '../rtc/ice-servers.js';
 import { MissionSpec, objectivesOf } from '../missions/mission-rules.js';
 import { MEMORIES_IN_PROMPT, memoryApplies } from '../memory/memory-rules.js';
 
@@ -91,6 +92,7 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
     private readonly quota: QuotaService,
     private readonly analysisQueue: AnalysisQueue,
     private readonly profiles: LearningProfileService,
+    private readonly ice: IceServers,
   ) {}
 
   // ───────────── lifecycle ─────────────
@@ -581,6 +583,21 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
 
   // ───────────── internals ─────────────
 
+  /** True while the call is running in this process (used by the "hold" request). */
+  async assertOwned(userId: string, id: string): Promise<void> {
+    await this.owned(userId, id);
+  }
+
+  isLive(id: string): boolean {
+    const run = this.running.get(id);
+    return Boolean(run && !run.convo.isEnded);
+  }
+
+  /** Current feedback status, for the long-poll that waits for it. */
+  async analysisStatus(userId: string, id: string): Promise<string> {
+    return (await this.owned(userId, id)).analysisStatus;
+  }
+
   private async owned(userId: string, id: string) {
     const session = isUuid(id) ? await this.prisma.conversationSession.findFirst({ where: { id, userId } }) : null;
     if (!session) throw notFound();
@@ -615,7 +632,8 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
   private async answerOffer(sdpOffer: string) {
     try {
       return await WebRtcEndpoint.answer(sdpOffer, {
-        iceServers: this.env.RTC_ICE_SERVERS.split(',').map((u) => u.trim()).filter(Boolean).map((urls) => ({ urls })),
+        iceServers: await this.ice.forServer(),
+        iceTransportPolicy: this.ice.relayOnly ? 'relay' : 'all',
         udpPortRange: this.env.RTC_UDP_PORT_RANGE,
       });
     } catch (err) {

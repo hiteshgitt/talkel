@@ -1,7 +1,7 @@
-import { Inject, Injectable, Logger, type OnApplicationShutdown } from '@nestjs/common';
+import { Logger, type OnApplicationShutdown } from '@nestjs/common';
+import type { PrismaClient } from '@speakai/db';
 import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
-import { ENV, type Env } from '../config/env.js';
 
 export const ANALYSIS_QUEUE_NAME = 'analysis';
 
@@ -14,15 +14,20 @@ export function redisConnection(url: string): Redis {
   return new Redis(url, { maxRetriesPerRequest: null });
 }
 
-/** Producer side: the API enqueues finished conversations; the worker process consumes them. */
-@Injectable()
-export class AnalysisQueue implements OnApplicationShutdown {
-  private readonly logger = new Logger(AnalysisQueue.name);
+/** Producer side: the API enqueues finished conversations; a worker consumes them. */
+export abstract class AnalysisQueue {
+  abstract enqueue(sessionId: string, opts?: { force?: boolean }): Promise<void>;
+}
+
+/** BullMQ on Redis (development, tests, or any always-on deployment). */
+export class RedisAnalysisQueue extends AnalysisQueue implements OnApplicationShutdown {
+  private readonly logger = new Logger(RedisAnalysisQueue.name);
   private readonly connection: Redis;
   private readonly queue: Queue<AnalysisJob>;
 
-  constructor(@Inject(ENV) env: Env) {
-    this.connection = redisConnection(env.REDIS_URL);
+  constructor(redisUrl: string) {
+    super();
+    this.connection = redisConnection(redisUrl);
     this.queue = new Queue<AnalysisJob>(ANALYSIS_QUEUE_NAME, { connection: this.connection });
   }
 
@@ -42,3 +47,24 @@ export class AnalysisQueue implements OnApplicationShutdown {
     this.connection.disconnect();
   }
 }
+
+/**
+ * The queue as columns on the conversation (QUEUE_DRIVER=postgres): no Redis needed, and nothing
+ * polls while no request is running — fits Cloud Run's request-based free tier.
+ */
+export class DbAnalysisQueue extends AnalysisQueue {
+  private readonly logger = new Logger(DbAnalysisQueue.name);
+
+  constructor(private readonly prisma: PrismaClient) {
+    super();
+  }
+
+  async enqueue(sessionId: string, opts: { force?: boolean } = {}): Promise<void> {
+    await this.prisma.conversationSession.update({
+      where: { id: sessionId },
+      data: { analysisNextAt: new Date(), analysisLockedUntil: null, ...(opts.force ? { analysisAttempts: 0 } : {}) },
+    });
+    this.logger.log(`queued analysis for ${sessionId}`);
+  }
+}
+

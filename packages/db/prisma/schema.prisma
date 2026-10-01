@@ -312,6 +312,11 @@ model ConversationSession {
   recordingBytes      Int?
   /// After-call feedback (Milestone 3)
   analysisStatus      AnalysisStatus        @default(PENDING)
+  /// Database-backed analysis queue (QUEUE_DRIVER=postgres, e.g. Cloud Run without Redis):
+  /// due time of the next attempt (null = not queued), attempts so far, and a processing lock.
+  analysisNextAt      DateTime?             @db.Timestamptz(3)
+  analysisAttempts    Int                   @default(0)
+  analysisLockedUntil DateTime?             @db.Timestamptz(3)
   /// Missions: the pressure level (1–5) this attempt was played at; null for practice conversations
   missionLevel        Int?
   /// Replays ("try that answer again"): the conversation and user turn being replayed. Replays stay out of History.
@@ -337,6 +342,7 @@ model ConversationSession {
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([status])
+  @@index([analysisNextAt])
   @@map("conversation_sessions")
 }
 

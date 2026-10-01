@@ -2,6 +2,11 @@ import 'reflect-metadata';
 import { join } from 'node:path';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { startAnalysisWorker } from './analysis/analysis-worker.js';
+import { AnalysisService } from './analysis/analysis.service.js';
+import { DbAnalysisWorker } from './analysis/db-analysis-worker.js';
+import { PRISMA } from './db/prisma.module.js';
+import type { PrismaClient } from '@speakai/db';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { toNodeHandler } from 'better-auth/node';
 import express, { type Request, type Response } from 'express';
@@ -34,5 +39,17 @@ app.use(express.json({ limit: '100kb' }));
 app.setGlobalPrefix('v1');
 app.useGlobalFilters(new ProblemFilter());
 app.enableShutdownHooks();
+// One always-on service (Cloud Run): run the after-call analysis worker in this process too.
+if (env.RUN_WORKER_IN_API) {
+  if (env.QUEUE_DRIVER === 'postgres') {
+    const worker = new DbAnalysisWorker(app.get<PrismaClient>(PRISMA), app.get(AnalysisService));
+    worker.start();
+    process.on('SIGTERM', () => void worker.stop());
+  } else {
+    const worker = startAnalysisWorker(app.get(AnalysisService), env.REDIS_URL);
+    process.on('SIGTERM', () => void worker.close());
+  }
+}
+
 await app.listen(env.PORT, '0.0.0.0');
 new Logger('bootstrap').log(`API listening on :${env.PORT}`);

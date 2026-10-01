@@ -77,6 +77,11 @@ async function request<S extends z.ZodType>(
 
 const conv = (id: string) => `/conversations/${encodeURIComponent(id)}`;
 
+/** STUN/TURN servers for calls (TURN credentials are short-lived, so they are fetched per call). */
+const IceServersResponse = z.object({
+  iceServers: z.array(z.object({ urls: z.union([z.string(), z.array(z.string())]), username: z.string().optional(), credential: z.string().optional() })),
+});
+
 export const api = {
   me: () => request('/me', { method: 'GET' }, Me),
   completeOnboarding: (body: OnboardingRequest) => request('/me/onboarding', { method: 'POST', body }, Me),
@@ -103,6 +108,7 @@ export const api = {
 
   connect: (id: string, body: ConnectRequest) => request(`${conv(id)}/connect`, { method: 'POST', body }, ConnectResponse),
   ready: (id: string) => request(`${conv(id)}/ready`, { method: 'POST' }, null),
+  iceServers: () => request('/rtc/ice-servers', { method: 'GET' }, IceServersResponse),
   end: (id: string) => request(`${conv(id)}/end`, { method: 'POST' }, ConversationDetail),
 
   acceptConsent: (consentVersion: string) => request('/me/consent', { method: 'POST', body: { consentVersion } }, Me),
@@ -111,6 +117,17 @@ export const api = {
   retryFeedback: (id: string) => request(`${conv(id)}/feedback/retry`, { method: 'POST' }, null),
   /** Streamed by the audio player with the session cookie as a header. */
   recordingUrl: (id: string) => `${API_URL}${conv(id)}/recording`,
+  /** Long-poll: resolves when feedback is ready (or after ~50 s). */
+  waitForFeedback: (id: string) => request(`${conv(id)}/feedback/wait`, { method: 'GET' }, z.object({ analysisStatus: z.string() })),
+  /**
+   * Held open for the whole call (the server's hosting only runs while a request is in flight).
+   * Resolves when the server ends it, or rejects when aborted / the network drops.
+   */
+  holdCall: async (id: string, signal: AbortSignal): Promise<void> => {
+    const cookie = await authClient.getCookie();
+    const res = await fetch(`${API_URL}${conv(id)}/hold`, { headers: cookie ? { Cookie: cookie } : {}, credentials: 'omit', signal });
+    await res.text();
+  },
 };
 
 const RecordingToggle = z.object({ recording: z.boolean() });

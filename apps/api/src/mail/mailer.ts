@@ -30,6 +30,28 @@ export class SmtpMailer implements Mailer {
   }
 }
 
+/** Sends through the Resend HTTP API (production). EMAIL_FROM must use a domain verified in Resend. */
+export class ResendMailer implements Mailer {
+  constructor(
+    private readonly apiKey: string,
+    private readonly from: string,
+    private readonly fetchImpl: typeof fetch = fetch,
+  ) {}
+
+  async send(message: EmailMessage): Promise<void> {
+    const res = await this.fetchImpl('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: this.from, to: [message.to], subject: message.subject, text: message.text, html: message.html }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      throw new Error(`Resend: HTTP ${res.status} ${detail.slice(0, 200)}`);
+    }
+  }
+}
+
 /** No SMTP configured: log the email so a developer can still follow the link. Never used in production. */
 export class LogMailer implements Mailer {
   private readonly logger = new Logger('LogMailer');

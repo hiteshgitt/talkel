@@ -65,6 +65,7 @@ export class RealtimeCall {
   private reconnectDeadline: number | null = null;
   private readySent = false;
   private closed = false;
+  private hold: AbortController | null = null;
 
   constructor(readonly conversationId: string) {}
 
@@ -174,8 +175,14 @@ export class RealtimeCall {
     const mic = this.mic;
     if (!webrtc || !mic) return;
 
-    // STUN lets the phone find a public address when it isn't on the server's network.
-    const pc = new webrtc.RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+    // STUN finds the phone's public address; in production TURN relays the audio (the server's
+    // hosting can't receive UDP). Fetched per connection because TURN credentials expire.
+    const iceServers = await api
+      .iceServers()
+      .then((r) => r.iceServers)
+      .catch(() => [{ urls: 'stun:stun.l.google.com:19302' }]);
+    if (this.closed) return;
+    const pc = new webrtc.RTCPeerConnection({ iceServers });
     this.pc = pc;
     for (const track of mic.getAudioTracks()) pc.addTrack(track, mic);
 
@@ -197,6 +204,7 @@ export class RealtimeCall {
       pc.close();
       return;
     }
+    this.holdOpen();
     await pc.setRemoteDescription({ type: 'answer', sdp: sdpAnswer });
   }
 
@@ -293,8 +301,27 @@ export class RealtimeCall {
     this.set({ phase: 'failed', floor: 'none', error: message });
   }
 
+  /**
+   * Keeps one request open for the whole call: the server's hosting (Cloud Run, request-based) only
+   * gets CPU while a request is in flight. Re-opened if it drops while the call is still going.
+   */
+  private holdOpen(): void {
+    if (this.hold || this.closed) return;
+    const ctrl = new AbortController();
+    this.hold = ctrl;
+    const reopen = () => {
+      if (this.hold !== ctrl) return;
+      this.hold = null;
+      if (!this.closed) setTimeout(() => this.holdOpen(), 1_000);
+    };
+    api.holdCall(this.conversationId, ctrl.signal).then(reopen, reopen);
+  }
+
   private cleanup(): void {
     this.closed = true;
+    const hold = this.hold;
+    this.hold = null;
+    hold?.abort();
     if (this.iceTimer) clearTimeout(this.iceTimer);
     this.iceTimer = null;
     for (const t of this.mic?.getTracks() ?? []) t.stop();

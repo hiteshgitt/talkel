@@ -57,6 +57,50 @@ export class ConversationsController {
     return this.conversations.detail(user.id, id);
   }
 
+  /**
+   * Held open by the phone for the whole call. On Cloud Run's request-based billing an instance only
+   * gets CPU while a request is in flight, so this keeps the call's audio processing running (and
+   * lets the instance scale to zero when nobody is talking). Heartbeats keep proxies from timing out.
+   */
+  @Get('conversations/:id/hold')
+  async hold(@CurrentUser() user: SessionUser, @Param('id') id: string, @Req() req: Request, @Res() res: Response): Promise<void> {
+    await this.conversations.assertOwned(user.id, id);
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.status(200);
+    res.write('live\n');
+    const started = Date.now();
+    await new Promise<void>((resolve) => {
+      let beat = 0;
+      const timer = setInterval(() => {
+        // The call may need a moment to start; then hold until it ends (hard cap: Cloud Run's 60 min).
+        const live = this.conversations.isLive(id);
+        if ((!live && Date.now() - started > 15_000) || Date.now() - started > 59 * 60_000) return stop();
+        if (++beat % 15 === 0) res.write('.\n');
+      }, 1_000);
+      const stop = () => {
+        clearInterval(timer);
+        resolve();
+      };
+      req.on('close', stop);
+    });
+    if (!res.writableEnded) res.end('ended\n');
+  }
+
+  /** Long-poll: returns as soon as the feedback (or replay comparison) is no longer being prepared, or after ~50 s. */
+  @Get('conversations/:id/feedback/wait')
+  async waitForFeedback(@CurrentUser() user: SessionUser, @Param('id') id: string, @Req() req: Request): Promise<{ analysisStatus: string }> {
+    const deadline = Date.now() + 50_000;
+    let closed = false;
+    req.on('close', () => (closed = true));
+    for (;;) {
+      const status = await this.conversations.analysisStatus(user.id, id);
+      if ((status !== 'PENDING' && status !== 'PROCESSING') || Date.now() > deadline || closed) return { analysisStatus: status };
+      await new Promise((r) => setTimeout(r, 1_500));
+    }
+  }
+
   /** WebRTC signalling: phone SDP offer in, our gateway's SDP answer out. */
   @Post('conversations/:id/connect')
   @HttpCode(200)

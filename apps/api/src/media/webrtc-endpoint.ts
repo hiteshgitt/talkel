@@ -50,7 +50,9 @@ export interface MediaStats {
 }
 
 export interface WebRtcEndpointOptions {
-  iceServers: Array<{ urls: string }>;
+  iceServers: Array<{ urls: string | string[]; username?: string; credential?: string }>;
+  /** 'relay': only TURN candidates (no inbound UDP needed, e.g. Cloud Run). */
+  iceTransportPolicy?: 'all' | 'relay';
   /** Local UDP ports for media, e.g. [40000, 40099]. */
   udpPortRange?: [number, number];
 }
@@ -113,6 +115,7 @@ export class WebRtcEndpoint implements MediaEndpoint {
   static async answer(sdpOffer: string, opts: WebRtcEndpointOptions): Promise<{ endpoint: WebRtcEndpoint; sdpAnswer: string }> {
     const pc = new RTCPeerConnection({
       iceServers: opts.iceServers,
+      ...(opts.iceTransportPolicy ? { iceTransportPolicy: opts.iceTransportPolicy } : {}),
       icePortRange: opts.udpPortRange,
       codecs: {
         audio: [new RTCRtpCodecParameters({ mimeType: 'audio/opus', clockRate: OPUS_RTP_CLOCK, channels: 2 })],

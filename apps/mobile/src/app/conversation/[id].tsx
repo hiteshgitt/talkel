@@ -41,13 +41,29 @@ export default function ConversationScreen() {
     // Transcripts are finalised a moment after the call ends; refresh until the status settles.
     // Refresh while the call is finishing, the recording is being saved, or feedback is being prepared.
     refetchInterval: (q) =>
-      q.state.data &&
-      (['ACTIVE', 'CONNECTING', 'RECONNECTING'].includes(q.state.data.status) ||
-        q.state.data.recording?.inProgress ||
-        ['PENDING', 'PROCESSING'].includes(q.state.data.analysisStatus))
-        ? 3000
-        : false,
+      q.state.data && (['ACTIVE', 'CONNECTING', 'RECONNECTING'].includes(q.state.data.status) || q.state.data.recording?.inProgress) ? 3000 : false,
   });
+  // While feedback is being prepared, keep one request open until it's ready (the server's hosting
+  // only runs while a request is in flight), then refresh.
+  const preparing = detail.data ? ['PENDING', 'PROCESSING'].includes(detail.data.analysisStatus) && detail.data.status !== 'ACTIVE' : false;
+  useEffect(() => {
+    if (!preparing) return;
+    let cancelled = false;
+    void (async () => {
+      while (!cancelled) {
+        const r = await api.waitForFeedback(id).catch(() => null);
+        if (cancelled) return;
+        if (!r) await new Promise((res) => setTimeout(res, 3000));
+        else if (!['PENDING', 'PROCESSING'].includes(r.analysisStatus)) {
+          void qc.invalidateQueries({ queryKey: conversationKey(id) });
+          return;
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [preparing, id, qc]);
   const { data: me } = useMe();
   const replay = useStartReplay(id);
   const retry = useMutation({

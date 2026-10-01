@@ -4,6 +4,7 @@ import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import type { Env } from '../config/env.js';
 import { purgeUserFiles } from '../account/account-cleanup.js';
+import { createRecordingStore } from '../recording/recording-store.js';
 import { accountDeletedEmail, type Mailer, resetPasswordEmail, verificationEmail } from '../mail/mailer.js';
 
 export const AUTH_BASE_PATH = '/v1/auth';
@@ -33,7 +34,8 @@ export function createAuth({ env, prisma, mailer }: AuthDeps) {
     basePath: AUTH_BASE_PATH,
     secret: env.BETTER_AUTH_SECRET,
     database: prismaAdapter(prisma, { provider: 'postgresql' }),
-    trustedOrigins: [env.WEB_BASE_URL, `${env.MOBILE_SCHEME}://`],
+    // Extra web origins, e.g. a staging tunnel next to the LAN address.
+    trustedOrigins: [env.WEB_BASE_URL, ...env.EXTRA_TRUSTED_ORIGINS, `${env.MOBILE_SCHEME}://`],
 
     emailAndPassword: {
       enabled: true,
@@ -62,7 +64,7 @@ export function createAuth({ env, prisma, mailer }: AuthDeps) {
       deleteUser: {
         enabled: true,
         beforeDelete: async (user) => {
-          await purgeUserFiles(prisma, { recordingsDir: env.RECORDINGS_DIR, callLogDir: env.CALL_LOG_DIR }, user.id);
+          await purgeUserFiles(prisma, { recordings: createRecordingStore(env), callLogDir: env.CALL_LOG_DIR }, user.id);
         },
         afterDelete: async (user) => {
           await mailer.send(accountDeletedEmail(user.email, user.name, env.WEB_BASE_URL));
