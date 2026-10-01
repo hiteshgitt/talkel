@@ -301,3 +301,13 @@ SECOND ANSWER (replay): ${input.secondAnswer}
 `.trim();
   return { system, user };
 }
+
+/** Gemini-safe schema (no size limits) for any structured-output Zod schema. */
+export function toGeminiSchema(schema: z.ZodType): unknown {
+  return withoutSizeLimits(z.toJSONSchema(schema, { target: 'draft-7', io: 'output' }));
+}
+
+/** Trims lists/texts to the Zod schema's limits before strict validation. */
+export function clampToSchema(schema: z.ZodType, raw: unknown): unknown {
+  return clampNode(raw, z.toJSONSchema(schema, { target: 'draft-7', io: 'output' }) as JsonSchemaNode);
+}

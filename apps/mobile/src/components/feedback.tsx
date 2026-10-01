@@ -7,6 +7,7 @@ import { IconBadge, ScenarioArt } from '@/components/art';
 import { Badge, Body, Button, Card, ProgressBar } from '@/components/ui';
 import { Gauge } from '@/components/vector';
 import { MissionResultCard } from '@/components/mission-result';
+import { SayItWays } from '@/components/say-it';
 import { formatMinutes, useCatalog } from '@/lib/queries';
 import type { IconName } from '@/lib/visuals';
 import { makeStyles, type Palette, radius, useColors } from '@/theme';
@@ -172,7 +173,7 @@ export function FeedbackSection({
       </Card>
     );
   }
-  return <FeedbackView f={c.feedback} goals={c.goals} missionId={c.missionId} onReplay={onReplay} />;
+  return <FeedbackView f={c.feedback} goals={c.goals} missionId={c.missionId} onReplay={onReplay} conversationId={c.id} />;
 }
 
 /** Card heading: coloured icon badge, title and optional count. */
@@ -202,11 +203,13 @@ function FeedbackView({
   goals,
   missionId,
   onReplay,
+  conversationId,
 }: {
   f: Feedback;
   goals: ConversationDetail['goals'];
   missionId: string | null;
   onReplay?: (turnSeq: number) => void;
+  conversationId: string;
 }) {
   const styles = useStyles();
   const c = useColors();
@@ -286,6 +289,7 @@ function FeedbackView({
               <Text style={[styles.right, styles.flex]}>{e.corrected}</Text>
             </View>
             <Text style={styles.muted}>{e.explanation}</Text>
+            <SayItWays conversationId={conversationId} text={e.corrected} lang={f.feedbackLanguage} />
           </View>
         ))}
         {f.grammarErrors.length || f.phrasing.length ? (
@@ -308,6 +312,7 @@ function FeedbackView({
                 <Text style={[styles.right, styles.flex]}>{p.better}</Text>
               </View>
               <Text style={styles.muted}>{p.why}</Text>
+              <SayItWays conversationId={conversationId} text={p.better} lang={f.feedbackLanguage} />
             </View>
           ))}
         </Card>
@@ -328,6 +333,7 @@ function FeedbackView({
                 <Text style={[styles.right, styles.flex]}>“{m.better}”</Text>
               </View>
               <Text style={styles.muted}>{m.why}</Text>
+              <SayItWays conversationId={conversationId} text={m.better} lang={f.feedbackLanguage} />
               {onReplay ? (
                 <Pressable onPress={() => onReplay(m.turnSeq)} accessibilityRole="button" style={({ pressed }) => [styles.tryAgain, pressed && styles.pressed]}>
                   <Ionicons name="refresh-circle" size={20} color={c.accent} />

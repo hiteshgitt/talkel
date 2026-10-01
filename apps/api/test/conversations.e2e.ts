@@ -2,7 +2,7 @@
  * Full conversation lifecycle against the compiled server, a real Postgres, a fake Gemini Live
  * server and a headless WebRTC phone.
  */
-import { CONSENT_VERSION, MissionList, MistakeList, Progress } from '@speakai/contracts';
+import { CONSENT_VERSION, MissionList, MistakeList, Progress, SayItResult } from '@speakai/contracts';
 import type { Catalog, ConversationDetail, ConversationList, CreateConversationResponse, Quota } from '@speakai/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type ApiProcess, startApi, startWorker } from './support/api-process.js';
@@ -420,6 +420,32 @@ describe('replays ("try that answer again")', () => {
     // Replays stay out of History.
     const after = (await (await get('/conversations', alice)).json()) as ConversationList;
     expect(after.items.some((c) => c.id === created.id)).toBe(false);
+  });
+});
+
+describe('say it 3 ways', () => {
+  it('rewrites a sentence from the feedback in three registers, once, and only for the owner', async () => {
+    const list = (await (await get('/conversations', alice)).json()) as ConversationList;
+    const id = list.items.find((c) => c.scenarioTitle === 'Bargaining' && c.missionLevel === null)!.id;
+
+    const calls = gemini.evaluations.length;
+    const res = await post(`/conversations/${id}/say-it`, alice, { text: 'too expensive' });
+    expect(res.status).toBe(200);
+    expect(SayItResult.parse(await res.json())).toEqual({
+      natural: 'It’s a bit too expensive for me.',
+      professional: 'I’m afraid that’s above my budget.',
+      casual: 'Too pricey for me, yaar!',
+      tip: 'With a shopkeeper, the natural one works best.',
+    });
+    expect(gemini.evaluations.at(-1)).toContain('Bargaining');
+    // Cached: asking again doesn't call the AI.
+    expect((await post(`/conversations/${id}/say-it`, alice, { text: 'too expensive' })).status).toBe(200);
+    expect(gemini.evaluations.length).toBe(calls + 1);
+
+    // Not a general-purpose AI: only sentences from this conversation, only for its owner.
+    expect((await post(`/conversations/${id}/say-it`, alice, { text: 'Write me a poem about Goa' })).status).toBe(400);
+    expect((await post(`/conversations/${id}/say-it`, bob, { text: 'too expensive' })).status).toBe(404);
+    expect((await post('/conversations/not-a-uuid/say-it', alice, { text: 'too expensive' })).status).toBe(404);
   });
 });
 

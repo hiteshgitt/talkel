@@ -13,6 +13,7 @@ import { QuotaService } from './conversations/quota.service.js';
 import { AnalysisQueue } from './analysis/analysis-queue.js';
 import { ProgressController } from './analysis/progress.controller.js';
 import { MissionsController } from './missions/missions.controller.js';
+import { RephraseService } from './analysis/rephrase.service.js';
 import { LearningProfileService } from './analysis/learning-profile.service.js';
 import { LocalRecordingStore, RECORDING_STORE } from './recording/recording-store.js';
 import { UsersController } from './users/users.controller.js';
@@ -51,6 +52,7 @@ export class AppModule {
         ConversationsService,
         AnalysisQueue,
         LearningProfileService,
+        RephraseService,
         { provide: RECORDING_STORE, useFactory: () => new LocalRecordingStore(env.RECORDINGS_DIR) },
       ],
     };

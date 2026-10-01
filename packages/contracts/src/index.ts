@@ -509,6 +509,20 @@ export const MistakeList = z.object({
 });
 export type MistakeList = z.infer<typeof MistakeList>;
 
+// ───────────── "Say it 3 ways" ─────────────
+
+export const SayItRequest = z.object({ text: z.string().trim().min(2).max(300) });
+export type SayItRequest = z.infer<typeof SayItRequest>;
+
+export const SayItResult = z.object({
+  natural: z.string(),
+  professional: z.string(),
+  casual: z.string(),
+  /** When to use which, in the feedback language. */
+  tip: z.string(),
+});
+export type SayItResult = z.infer<typeof SayItResult>;
+
 // ───────────── Replays ("try that answer again") ─────────────
 
 export const ReplayRequest = z.object({ turnSeq: z.number().int().nonnegative() });

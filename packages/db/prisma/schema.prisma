@@ -314,6 +314,7 @@ model ConversationSession {
   replayOfId          String?               @db.Uuid
   replayOf            ConversationSession?  @relation("Replays", fields: [replayOfId], references: [id], onDelete: Cascade)
   replays             ConversationSession[] @relation("Replays")
+  rephrasings         Rephrasing[]
   replayTurnSeq       Int?
   /// { question, originalAnswer } captured when the replay is created
   replayContext       Json?
@@ -522,6 +523,21 @@ model PracticeRecommendation {
 }
 
 /// Evolves after every analysed conversation (PRD §34); feeds the next conversation's learner layer (PRD §35).
+/// "Say it 3 ways": natural / professional / casual versions of a sentence from a conversation's feedback (cached).
+model Rephrasing {
+  id        String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId String              @db.Uuid
+  session   ConversationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  source    String
+  /// { natural, professional, casual, tip }
+  result    Json
+  model     String
+  createdAt DateTime            @default(now()) @db.Timestamptz(3)
+
+  @@unique([sessionId, source])
+  @@map("rephrasings")
+}
+
 /// A learner's progress through one mission: which levels are unlocked/passed and their best scores.
 model MissionProgress {
   id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

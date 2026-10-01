@@ -14,6 +14,7 @@ import {
   ProblemDetails,
   type ProfilePatch,
   Quota,
+  SayItResult,
   type SettingsPatch,
 } from '@speakai/contracts';
 import { z } from 'zod';
@@ -93,6 +94,7 @@ export const api = {
     request(`/conversations${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, { method: 'GET' }, ConversationList),
   conversation: (id: string) => request(conv(id), { method: 'GET' }, ConversationDetail),
   deleteConversation: (id: string) => request(conv(id), { method: 'DELETE' }, null),
+  sayIt: (id: string, text: string) => request(`${conv(id)}/say-it`, { method: 'POST', body: { text } }, SayItResult),
   replay: (id: string, turnSeq: number) => request(`${conv(id)}/replay`, { method: 'POST', body: { turnSeq } }, CreateConversationResponse),
 
   connect: (id: string, body: ConnectRequest) => request(`${conv(id)}/connect`, { method: 'POST', body }, ConnectResponse),

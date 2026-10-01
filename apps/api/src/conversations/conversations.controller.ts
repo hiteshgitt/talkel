@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Post, Query, Req, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Query, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import {
   ConnectRequest,
@@ -9,11 +9,14 @@ import {
   type CreateConversationResponse,
   type Quota,
   ReplayRequest,
+  SayItRequest,
+  type SayItResult,
 } from '@speakai/contracts';
 import { z } from 'zod';
 import { AllowDevToken, CurrentUser, type SessionUser } from '../auth/auth.decorators.js';
-import { parseBody } from '../common/problem.js';
-import { ConversationsService } from './conversations.service.js';
+import { parseBody, ProblemException } from '../common/problem.js';
+import { RephraseService } from '../analysis/rephrase.service.js';
+import { ConversationsService, isUuid } from './conversations.service.js';
 import { QuotaService } from './quota.service.js';
 
 const RecordingToggle = z.object({ on: z.boolean() });
@@ -30,6 +33,7 @@ export class ConversationsController {
   constructor(
     private readonly conversations: ConversationsService,
     private readonly quota: QuotaService,
+    private readonly rephrase: RephraseService,
   ) {}
 
   @Get('quota')
@@ -78,6 +82,14 @@ export class ConversationsController {
   @HttpCode(202)
   retryFeedback(@CurrentUser() user: SessionUser, @Param('id') id: string): Promise<void> {
     return this.conversations.retryFeedback(user.id, id);
+  }
+
+  /** "Say it 3 ways": natural / professional / casual versions of a sentence from this conversation. */
+  @Post('conversations/:id/say-it')
+  @HttpCode(200)
+  sayIt(@CurrentUser() user: SessionUser, @Param('id') id: string, @Body() body: unknown): Promise<SayItResult> {
+    if (!isUuid(id)) throw new ProblemException(HttpStatus.NOT_FOUND, 'NOT_FOUND', 'Conversation not found');
+    return this.rephrase.sayIt(user.id, id, parseBody(SayItRequest, body).text);
   }
 
   /** "Try that answer again": a short replay call of the question before the user's turn `turnSeq`. */

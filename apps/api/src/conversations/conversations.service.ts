@@ -733,7 +733,7 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
   }
 }
 
-const isUuid = (id: string) => z.string().uuid().safeParse(id).success;
+export const isUuid = (id: string) => z.string().uuid().safeParse(id).success;
 
 type AnalysisRow = Prisma.SessionAnalysisGetPayload<{
   include: { grammarErrors: true; vocabularyItems: true; fluency: true; recommendations: true };

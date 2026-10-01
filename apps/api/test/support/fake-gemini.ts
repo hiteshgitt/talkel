@@ -14,6 +14,14 @@ export const FAKE_MISSION = {
   ],
 };
 
+/** The fake's "say it 3 ways". */
+export const FAKE_SAY_IT = {
+  natural: 'It’s a bit too expensive for me.',
+  professional: 'I’m afraid that’s above my budget.',
+  casual: 'Too pricey for me, yaar!',
+  tip: 'With a shopkeeper, the natural one works best.',
+};
+
 /** The fake's comparison for replays ("try that answer again"). */
 export const FAKE_REPLAY = {
   first: { band: 2, comment: 'Too blunt.' },
@@ -89,7 +97,9 @@ export async function startFakeGemini(): Promise<FakeGemini> {
     req.on('data', (c: Buffer) => (body += c.toString()));
     req.on('end', () => {
       evaluations.push(body);
-      const evaluation = body.includes('SECOND ANSWER (replay)')
+      const evaluation = body.includes('WHAT THEY WANT TO SAY')
+        ? FAKE_SAY_IT
+        : body.includes('SECOND ANSWER (replay)')
         ? FAKE_REPLAY
         : { ...FAKE_EVALUATION, mission: body.includes('MISSION (level') ? FAKE_MISSION : null };
       res.writeHead(200, { 'Content-Type': 'application/json' });
