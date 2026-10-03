@@ -11,8 +11,9 @@ import { makeStyles } from '@/theme';
 
 export default function SignInScreen() {
   const styles = useStyles();
-  const { verified } = useLocalSearchParams<{ verified?: string }>();
-  const [email, setEmail] = useState('');
+  const params = useLocalSearchParams<{ verified?: string; email?: string }>();
+  const verified = params.verified;
+  const [email, setEmail] = useState(params.email ?? '');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(configProblem());
   const [notVerified, setNotVerified] = useState(false);

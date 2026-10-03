@@ -198,6 +198,18 @@ describe('LiveConversation', () => {
     expect(onEnded.mock.calls[0]![0]).toMatchObject({ status: 'ENDED', endReason: 'CONNECTION_LOST' });
   });
 
+  it('re-sends the accent/persona reminder silently every few minutes in long calls', async () => {
+    const { convo, live, advance } = setup({ maxDurationMs: 600_000, styleCue: '(Call system note: keep your accent)' });
+    convo.markMediaReady();
+    const reminders = () => live.cues.filter((c) => c.text.includes('keep your accent'));
+    await advance(140_000);
+    expect(reminders()).toHaveLength(0);
+    await advance(20_000);
+    expect(reminders()).toEqual([{ text: '(Call system note: keep your accent)', turnComplete: false }]); // never asks for a reply
+    await advance(155_000);
+    expect(reminders()).toHaveLength(2);
+  });
+
   it('warns, wraps up and hard-stops at the time limit, flushing along the way', async () => {
     const { convo, live, media, onEnded, onFlush, advance } = setup({ maxDurationMs: 180_000 });
     convo.markMediaReady();

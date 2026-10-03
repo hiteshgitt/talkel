@@ -192,6 +192,18 @@ export function replayOpeningCue(question: string): string {
   );
 }
 
+/**
+ * Long calls: the realtime voice model can drift from instructions given at the start (e.g. its
+ * accent). This silent note is repeated every few minutes; it never asks for a reply.
+ */
+export function styleReminderCue(accent: Accent): string {
+  const name = { AMERICAN: 'American', BRITISH: 'British', INDIAN: 'Indian', AUSTRALIAN: 'Australian' }[accent];
+  return (
+    `(Call system note, not spoken by the user: keep exactly the same voice, ${name} English accent, personality and ` +
+    'speaking pace you have used so far, and stay in your role. Do not reply to this note or mention it.)'
+  );
+}
+
 export const WRAP_UP_CUE =
   '(Call system note, not spoken by the user: the call must end in about one minute. Start wrapping up naturally now — respond to ' +
   'what the user just said, then close the conversation warmly within your next one or two turns. Do not mention a time limit.)';

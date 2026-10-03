@@ -37,6 +37,9 @@ export interface LiveConversationDeps {
   openingCue: string;
   /** Sent ~1 minute before the time limit; empty = none (replays). */
   wrapUpCue: string;
+  /** Re-sent silently every few minutes so the voice keeps its accent; empty = none. */
+  styleCue?: string;
+  styleCueEveryMs?: number;
   /** 'single_answer' lets the AI end right after the user's first answer (replays). */
   endPolicy?: 'conversation' | 'single_answer';
   handleTool: (name: string, args: unknown) => ToolOutcome;
@@ -53,6 +56,8 @@ export interface LiveConversationDeps {
 }
 
 const WRAP_UP_LEAD_MS = 60_000;
+/** How often the accent/persona reminder is due during a call. */
+const STYLE_CUE_EVERY_MS = 150_000;
 /** The AI may not end a call before this much time and this many user turns (prevents premature hang-ups). */
 const MIN_CALL_MS_BEFORE_AI_END = 45_000;
 const MIN_USER_TURNS_BEFORE_AI_END = 2;
@@ -91,6 +96,7 @@ export class LiveConversation {
   private userSpeechStartedAt: number | null = null;
   private aiStoppedAt: number | null = null;
   private readonly responseLatenciesMs: number[] = [];
+  private lastStyleCueAt = 0;
 
   constructor(private readonly deps: LiveConversationDeps) {
     this.now = deps.now ?? (() => performance.now());
@@ -136,6 +142,14 @@ export class LiveConversation {
         this.deps.onEvent?.('WRAP_UP', this.elapsedMs());
       }, wrapAt),
       setTimeout(() => void this.end('TIME_LIMIT'), maxDurationMs),
+      // Accent/persona reminder: due every few minutes, sent at the first moment the AI isn't speaking.
+      setInterval(() => {
+        const every = this.deps.styleCueEveryMs ?? STYLE_CUE_EVERY_MS;
+        if (!this.deps.styleCue || this.aiPlaying || this.status !== 'ACTIVE') return;
+        if (this.elapsedMs() - this.lastStyleCueAt < every) return;
+        this.lastStyleCueAt = this.elapsedMs();
+        this.cue(this.deps.styleCue, false);
+      }, 5_000),
       setInterval(() => this.deps.onFlush?.(this.snapshot()), this.deps.flushIntervalMs ?? 10_000),
       setInterval(() => this.logSys({ kind: 'media_stats', ...this.media.stats() }), 10_000),
       setInterval(() => this.recorder?.tick(this.now()), 200),

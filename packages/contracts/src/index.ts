@@ -354,6 +354,73 @@ export const TranscriptTurn = z.object({
 });
 export type TranscriptTurn = z.infer<typeof TranscriptTurn>;
 
+// ───────────── Direct calls (phone ⇄ Gemini Live) ─────────────
+
+/**
+ * The phone talks to Gemini Live itself, with a short-lived single-use token from us. The token
+ * carries the whole session setup (instructions, voice, tools), so the phone never sees the prompt.
+ */
+export const LiveTokenRequest = z.object({
+  /** Re-joining after a network drop or a provider goAway: the token resumes this session. */
+  resumeHandle: z.string().min(1).max(512).optional(),
+});
+export type LiveTokenRequest = z.infer<typeof LiveTokenRequest>;
+
+export const LiveTokenResponse = z.object({
+  /** WebSocket URL including the token. */
+  url: z.string(),
+  model: z.string(),
+  durationSec: z.number().int(),
+  /** Text cues the phone sends during the call (empty: none). */
+  openingCue: z.string(),
+  wrapUpCue: z.string(),
+  styleCue: z.string(),
+  /** When the AI may end the call: normal conversations need ~45 s and two answers; replays one answer. */
+  endPolicy: z.enum(['conversation', 'single_answer']),
+});
+export type LiveTokenResponse = z.infer<typeof LiveTokenResponse>;
+
+/** A tool call from the AI, run on the server (it knows the hidden scenario state). */
+export const LiveToolRequest = z.object({
+  name: z.string().min(1).max(64),
+  args: z.record(z.string(), z.unknown()).default({}),
+});
+export type LiveToolRequest = z.infer<typeof LiveToolRequest>;
+
+export const LiveToolResponse = z.object({
+  /** Sent back to the AI as the function response. */
+  response: z.record(z.string(), z.unknown()),
+  endRequested: z.enum(['OBJECTIVE_COMPLETED', 'AI_NATURAL_END']).nullable(),
+});
+export type LiveToolResponse = z.infer<typeof LiveToolResponse>;
+
+const LiveTurns = z.array(TranscriptTurn.extend({ text: z.string().max(4_000) })).max(600);
+
+/** Sent every few seconds during a call, so a crash or lost phone still leaves the transcript. */
+export const LiveProgressRequest = z.object({ turns: LiveTurns });
+export type LiveProgressRequest = z.infer<typeof LiveProgressRequest>;
+
+export const LiveCompleteRequest = z.object({
+  endReason: EndReason,
+  /** Measured by the phone from when the AI opened the call; capped by the server's own clock. */
+  durationMs: z.number().int().nonnegative(),
+  turns: LiveTurns,
+  liveMetrics: z.object({
+    userSpeakingMs: z.number().nonnegative(),
+    responseLatenciesMs: z.array(z.number().nonnegative()).max(600),
+  }),
+  usage: z
+    .object({
+      inputAudioTokens: z.number().int().nonnegative(),
+      outputAudioTokens: z.number().int().nonnegative(),
+      inputTextTokens: z.number().int().nonnegative(),
+      outputTextTokens: z.number().int().nonnegative(),
+      cachedInputTokens: z.number().int().nonnegative(),
+    })
+    .optional(),
+});
+export type LiveCompleteRequest = z.infer<typeof LiveCompleteRequest>;
+
 // ───────────── Conversation detail ─────────────
 
 export const RecordingInfo = z.object({

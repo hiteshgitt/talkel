@@ -4,6 +4,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { BrandMark } from '@/components/art';
 import { Button, ErrorText, Field, Screen, Title } from '@/components/ui';
 import { authClient, VERIFIED_CALLBACK_URL } from '@/lib/auth-client';
+import { pendingSignup } from '@/lib/pending-signup';
 import { makeStyles } from '@/theme';
 
 const MIN_PASSWORD = 8;
@@ -32,6 +33,7 @@ export default function SignUpScreen() {
       setError(err.message ?? 'Could not create your account');
       return;
     }
+    pendingSignup.set(email.trim(), password);
     router.replace({ pathname: '/check-email', params: { email: email.trim() } });
   }
 

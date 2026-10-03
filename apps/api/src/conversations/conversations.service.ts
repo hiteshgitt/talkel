@@ -16,6 +16,12 @@ import {
   type ConversationList,
   type CreateConversationRequest,
   type CreateConversationResponse,
+  type LiveCompleteRequest,
+  type LiveTokenRequest,
+  type LiveTokenResponse,
+  type LiveToolRequest,
+  type LiveToolResponse,
+  type TranscriptTurn,
   AnalysisStatus as AnalysisStatusSchema,
   EndReason as EndReasonSchema,
   Feedback,
@@ -35,6 +41,7 @@ import { renderTemplate } from '../engine/scenario-kinds.js';
 import { handleToolCall } from '../engine/tools.js';
 import { connectGeminiLive, GeminiSetupError, type LiveSession } from '../gemini/gemini-live.js';
 import { buildGeminiSetup } from '../gemini/gemini-setup.js';
+import { createLiveToken, liveSocketUrl } from '../gemini/live-token.js';
 import { WebRtcEndpoint } from '../media/webrtc-endpoint.js';
 import { JsonlCallLog } from '../common/jsonl-call-log.js';
 import { CallRecorder } from '../recording/call-recorder.js';
@@ -70,6 +77,26 @@ interface Pending {
   expiresAt: number;
 }
 
+/** A call where the phone talks to Gemini Live directly; we issue tokens, run tools and save the result. */
+interface Direct {
+  userId: string;
+  prepared: PreparedConversation;
+  voiceName: string;
+  values: Record<string, string | number>;
+  plannedMs: number;
+  connectedAt: number;
+  /** When the AI opened the call (the billable start). */
+  readyAt: number | null;
+  /** Last request from the phone; a call that goes quiet is closed by the sweeper. */
+  lastSeen: number;
+  turns: TranscriptTurn[];
+}
+
+/** No word from the phone for this long: the app was killed or lost the network for good. */
+const DIRECT_SILENCE_MS = 75_000;
+/** Time to open the socket with a token. */
+const TOKEN_CONNECT_MS = 90_000;
+
 interface Running {
   userId: string;
   convo: LiveConversation;
@@ -82,6 +109,8 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
   private readonly logger = new Logger(ConversationsService.name);
   private readonly pending = new Map<string, Pending>();
   private readonly running = new Map<string, Running>();
+  private readonly direct = new Map<string, Direct>();
+  private sweeper: NodeJS.Timeout | null = null;
   /** Serialises DB writes per session (periodic flushes vs. the final write). */
   private readonly writeChains = new Map<string, Promise<void>>();
 
@@ -307,24 +336,7 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
       return { sdpAnswer, durationSec: session.plannedDurationSec };
     }
 
-    const pending = this.pending.get(id);
-    if (session.status !== 'CREATED' || !pending || pending.userId !== userId || pending.expiresAt < Date.now()) {
-      if (session.status === 'CREATED') await this.markExpired(id);
-      throw problem(HttpStatus.CONFLICT, 'SESSION_NOT_CONNECTABLE', 'This conversation can’t be started any more. Please start a new one.');
-    }
-    this.pending.delete(id);
-
-    const apiKey = this.env.GEMINI_API_KEY;
-    if (!apiKey) throw problem(HttpStatus.SERVICE_UNAVAILABLE, 'PROVIDER_NOT_CONFIGURED', 'AI provider is not configured');
-
-    // Re-check the allowance at connect time (another device may have used it meanwhile).
-    const quota = await this.quota.forUser(userId);
-    const durationSec = Math.min(session.plannedDurationSec, quota.remainingSec);
-    if (durationSec < MIN_REMAINING_TO_START_SEC) {
-      await this.markExpired(id);
-      throw problem(HttpStatus.PAYMENT_REQUIRED, 'QUOTA_EXCEEDED', 'You’ve used today’s free practice time');
-    }
-
+    const { pending, apiKey, durationSec } = await this.takePending(userId, id, session);
     const { prepared } = pending;
     const [liveResult, mediaResult] = await Promise.allSettled([
       connectGeminiLive({
@@ -354,6 +366,7 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
       openingCue: prepared.openingCue,
       wrapUpCue: prepared.wrapUpCue,
       endPolicy: prepared.endPolicy,
+      styleCue: prepared.styleCue,
       handleTool: (name, args) => {
         const outcome = handleToolCall(name, args, { values: run.values, goalIds: run.goalIds, goalsAchieved: run.convo.goalsAchieved });
         if (outcome.stateChanges) Object.assign(run.values, outcome.stateChanges);
@@ -383,7 +396,118 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
     return { sdpAnswer, durationSec };
   }
 
+  /**
+   * Direct calls: a single-use Gemini Live token with the whole session setup locked in. Called once
+   * to start, and again with the provider's resume handle whenever the phone has to reconnect.
+   */
+  async liveToken(userId: string, id: string, req: LiveTokenRequest): Promise<LiveTokenResponse> {
+    const session = await this.owned(userId, id);
+    let call = this.direct.get(id);
+    if (req.resumeHandle) {
+      if (!call || call.userId !== userId) throw problem(HttpStatus.CONFLICT, 'SESSION_NOT_CONNECTABLE', 'This conversation has already ended');
+    } else {
+      const { pending, durationSec } = await this.takePending(userId, id, session);
+      call = {
+        userId,
+        prepared: pending.prepared,
+        voiceName: pending.voiceName,
+        values: { ...pending.prepared.scenarioState },
+        plannedMs: durationSec * 1000,
+        connectedAt: Date.now(),
+        readyAt: null,
+        lastSeen: Date.now(),
+        turns: [],
+      };
+    }
+    const apiKey = this.env.GEMINI_API_KEY;
+    if (!apiKey) throw problem(HttpStatus.SERVICE_UNAVAILABLE, 'PROVIDER_NOT_CONFIGURED', 'AI provider is not configured');
+
+    const { prepared } = call;
+    const setup = {
+      ...buildGeminiSetup({ model: this.env.GEMINI_LIVE_MODEL, voiceName: call.voiceName, prepared }),
+      // Resumption must be part of the token: the provider ignores a handle sent by the phone.
+      sessionResumption: req.resumeHandle ? { handle: req.resumeHandle } : {},
+    };
+    const now = Date.now();
+    // The connection is cut off shortly after the call's time is up, whatever the phone does.
+    const endsAt = (call.readyAt ?? now) + call.plannedMs + 90_000;
+    let token: string;
+    try {
+      token = await createLiveToken({ apiKey, baseUrl: this.env.GEMINI_API_BASE, setup, connectBy: new Date(now + TOKEN_CONNECT_MS), expiresAt: new Date(Math.max(endsAt, now + TOKEN_CONNECT_MS)) });
+    } catch (err) {
+      if (!req.resumeHandle) {
+        await this.prisma.conversationSession.update({ where: { id }, data: { status: 'FAILED', endReason: 'ERROR', endedAt: new Date() } });
+      }
+      throw this.providerProblem(err);
+    }
+    call.lastSeen = now;
+    if (!req.resumeHandle) {
+      this.direct.set(id, call);
+      await this.prisma.conversationSession.update({ where: { id }, data: { status: 'CONNECTING', plannedDurationSec: call.plannedMs / 1000 } });
+      this.logger.log(`conversation ${id} direct token issued (user=${userId}, ${call.plannedMs / 1000}s)`);
+    } else {
+      this.enqueue(id, () => this.persistEvent(id, 'RECONNECTED', this.directElapsed(call!)));
+    }
+    return {
+      url: liveSocketUrl(this.env.GEMINI_LIVE_URL, token),
+      model: setup.model,
+      durationSec: Math.round(call.plannedMs / 1000),
+      openingCue: prepared.openingCue,
+      wrapUpCue: prepared.wrapUpCue,
+      styleCue: prepared.styleCue,
+      endPolicy: prepared.endPolicy,
+    };
+  }
+
+  /** Direct calls: the AI called a tool. Runs here because tools may use hidden state (e.g. a floor price). */
+  async liveTool(userId: string, id: string, req: LiveToolRequest): Promise<LiveToolResponse> {
+    const call = this.directCall(userId, id);
+    const outcome = handleToolCall(req.name, req.args, { values: call.values, goalIds: call.prepared.goals.map((g) => g.id), goalsAchieved: new Set() });
+    if (outcome.stateChanges) {
+      Object.assign(call.values, outcome.stateChanges);
+      const values = { ...call.values };
+      this.enqueue(id, async () => {
+        await this.prisma.conversationSession.update({ where: { id }, data: { scenarioState: await this.stateWrite(id, values) } });
+      });
+    }
+    this.enqueue(id, () => this.persistEvent(id, 'TOOL_CALL', this.directElapsed(call), { name: req.name, args: req.args as Record<string, unknown>, response: outcome.response }));
+    return { response: outcome.response, endRequested: outcome.endRequested ?? null };
+  }
+
+  /** Direct calls: periodic transcript save (also the phone's heartbeat). */
+  async liveProgress(userId: string, id: string, turns: TranscriptTurn[]): Promise<void> {
+    const call = this.directCall(userId, id);
+    call.turns = turns;
+    this.enqueue(id, async () => {
+      await this.prisma.$transaction(this.turnsWrite(id, { turns, status: 'ACTIVE' }));
+    });
+  }
+
+  /** Direct calls: the call is over; save it and queue the feedback. */
+  async liveComplete(userId: string, id: string, req: LiveCompleteRequest): Promise<ConversationDetail> {
+    const call = this.direct.get(id);
+    if (call && call.userId === userId) {
+      this.finishDirect(id, call, req.endReason, { turns: req.turns, durationMs: req.durationMs, liveMetrics: req.liveMetrics, usage: req.usage });
+      await this.writeChains.get(id);
+    } else {
+      await this.owned(userId, id); // already closed (e.g. by the sweeper): just return it
+    }
+    return this.detail(userId, id);
+  }
+
   async ready(userId: string, id: string): Promise<void> {
+    const call = this.direct.get(id);
+    if (call && call.userId === userId) {
+      if (call.readyAt !== null) return;
+      call.readyAt = Date.now();
+      call.lastSeen = call.readyAt;
+      const startedAt = new Date(call.readyAt);
+      this.enqueue(id, async () => {
+        await this.prisma.conversationSession.update({ where: { id }, data: { status: 'ACTIVE', startedAt } });
+      });
+      this.enqueue(id, () => this.persistEvent(id, 'READY', 0));
+      return;
+    }
     const run = this.running.get(id);
     if (!run || run.userId !== userId) throw notFound();
     run.convo.markMediaReady();
@@ -392,7 +516,12 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
   async end(userId: string, id: string): Promise<ConversationDetail> {
     const session = await this.owned(userId, id);
     const run = this.running.get(id);
-    if (run && run.userId === userId) {
+    const call = this.direct.get(id);
+    if (call && call.userId === userId) {
+      // The phone normally sends "complete" with the transcript; this is the fallback.
+      this.finishDirect(id, call, 'USER_ENDED');
+      await this.writeChains.get(id);
+    } else if (run && run.userId === userId) {
       await run.convo.end('USER_ENDED');
       await this.writeChains.get(id);
     } else if (session.status === 'CREATED') {
@@ -413,6 +542,7 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
   async setRecording(userId: string, id: string, on: boolean): Promise<{ recording: boolean }> {
     await this.owned(userId, id);
     const run = this.running.get(id);
+    if (this.direct.has(id)) throw problem(HttpStatus.CONFLICT, 'RECORDING_UNAVAILABLE', 'Recording isn’t available for this call yet');
     if (!run || run.userId !== userId || run.convo.isEnded) {
       throw problem(HttpStatus.CONFLICT, 'CONVERSATION_NOT_LIVE', 'You can only record a call that is in progress');
     }
@@ -451,10 +581,10 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
   async remove(userId: string, id: string): Promise<void> {
     const owned = await this.owned(userId, id);
     const run = this.running.get(id);
-    if (run) {
-      await run.convo.end('USER_ENDED');
-      await this.writeChains.get(id);
-    }
+    const call = this.direct.get(id);
+    if (call) this.finishDirect(id, call, 'USER_ENDED');
+    if (run) await run.convo.end('USER_ENDED');
+    if (call || run) await this.writeChains.get(id);
     this.pending.delete(id);
     if (owned.recordingKey) await this.recordings.remove(owned.recordingKey);
     await this.prisma.conversationSession.delete({ where: { id } }); // turns/events cascade; usage keeps counting
@@ -512,10 +642,13 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
     const render = (t: string) => renderTemplate(t, state.values);
     const run = this.running.get(id);
     const live = run ? run.convo.snapshot() : null;
+    const call = this.direct.get(id);
     const achieved = new Set(live ? live.goalsAchieved : s.goalsAchieved);
     const turns = live
       ? live.turns
-      : s.turns.map((t) => ({ seq: t.seq, speaker: t.speaker, text: t.text, startMs: t.startMs, interrupted: t.interrupted, final: true }));
+      : call
+        ? call.turns
+        : s.turns.map((t) => ({ seq: t.seq, speaker: t.speaker, text: t.text, startMs: t.startMs, interrupted: t.interrupted, final: true }));
 
     return {
       id: s.id,
@@ -526,7 +659,7 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
       status: SessionStatusSchema.parse(s.status),
       endReason: s.endReason ? EndReasonSchema.parse(s.endReason) : null,
       createdAt: s.createdAt.toISOString(),
-      durationMs: live?.durationMs ?? s.durationMs,
+      durationMs: live?.durationMs ?? (call ? this.directElapsed(call) : s.durationMs),
       turnCount: turns.length,
       overallScore: s.analysis?.overallScore ?? null,
       missionLevel: s.missionLevel,
@@ -574,9 +707,13 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
       ]);
     }
     if (stale.length) this.logger.warn(`closed ${stale.length} conversation(s) left open by a previous run`);
+    this.sweeper = setInterval(() => this.sweepDirect(), 15_000);
+    this.sweeper.unref();
   }
 
   async onApplicationShutdown(): Promise<void> {
+    if (this.sweeper) clearInterval(this.sweeper);
+    for (const [id, call] of this.direct) this.finishDirect(id, call, 'SERVER_RESTART');
     await Promise.all([...this.running.values()].map((r) => r.convo.end('SERVER_RESTART')));
     await Promise.all([...this.writeChains.values()]);
   }
@@ -589,6 +726,7 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
   }
 
   isLive(id: string): boolean {
+    if (this.direct.has(id)) return true;
     const run = this.running.get(id);
     return Boolean(run && !run.convo.isEnded);
   }
@@ -608,7 +746,7 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
     const active = await this.prisma.conversationSession.findMany({ where: { userId, status: { in: [...ACTIVE_STATUSES] } } });
     for (const s of active) {
       const run = this.running.get(s.id);
-      if (run && !run.convo.isEnded) {
+      if ((run && !run.convo.isEnded) || this.direct.has(s.id)) {
         throw problem(HttpStatus.CONFLICT, 'ACTIVE_CONVERSATION_EXISTS', 'You already have a conversation in progress');
       }
       // Never connected, or its runtime is gone: close it so it doesn't block new calls.
@@ -627,6 +765,86 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
     return recent
       .map((r) => StoredState.safeParse(r.scenarioState))
       .flatMap((p) => (p.success && typeof p.data.values.situation === 'string' ? [p.data.values.situation] : []));
+  }
+
+  /** Validates a just-created conversation for its first connection and re-checks the allowance. */
+  private async takePending(userId: string, id: string, session: { status: string; plannedDurationSec: number }) {
+    const pending = this.pending.get(id);
+    if (session.status !== 'CREATED' || !pending || pending.userId !== userId || pending.expiresAt < Date.now()) {
+      if (session.status === 'CREATED') await this.markExpired(id);
+      throw problem(HttpStatus.CONFLICT, 'SESSION_NOT_CONNECTABLE', 'This conversation can’t be started any more. Please start a new one.');
+    }
+    this.pending.delete(id);
+
+    const apiKey = this.env.GEMINI_API_KEY;
+    if (!apiKey) throw problem(HttpStatus.SERVICE_UNAVAILABLE, 'PROVIDER_NOT_CONFIGURED', 'AI provider is not configured');
+
+    // Re-check the allowance at connect time (another device may have used it meanwhile).
+    const quota = await this.quota.forUser(userId);
+    const durationSec = Math.min(session.plannedDurationSec, quota.remainingSec);
+    if (durationSec < MIN_REMAINING_TO_START_SEC) {
+      await this.markExpired(id);
+      throw problem(HttpStatus.PAYMENT_REQUIRED, 'QUOTA_EXCEEDED', 'You’ve used today’s free practice time');
+    }
+    return { pending, apiKey, durationSec };
+  }
+
+  private directCall(userId: string, id: string): Direct {
+    const call = this.direct.get(id);
+    if (!call || call.userId !== userId) throw problem(HttpStatus.CONFLICT, 'CONVERSATION_NOT_LIVE', 'This conversation has already ended');
+    call.lastSeen = Date.now();
+    return call;
+  }
+
+  private directElapsed(call: Direct, at = Date.now()): number {
+    return call.readyAt === null ? 0 : Math.max(0, at - call.readyAt);
+  }
+
+  /**
+   * Saves a direct call exactly once. Billable time is the phone's figure, capped by our own clock
+   * (from "ready" to now) and the planned length, so a modified app can't under- or over-report much.
+   */
+  private finishDirect(
+    id: string,
+    call: Direct,
+    endReason: NonNullable<LiveSnapshot['endReason']>,
+    report?: Pick<LiveCompleteRequest, 'turns' | 'durationMs' | 'liveMetrics' | 'usage'>,
+    at = Date.now(),
+  ): void {
+    if (this.direct.get(id) !== call) return;
+    this.direct.delete(id);
+    const serverMs = this.directElapsed(call, at);
+    const durationMs = call.readyAt === null ? 0 : Math.min(report?.durationMs ?? serverMs, serverMs + 5_000, call.plannedMs + 15_000);
+    const turns = (report?.turns ?? call.turns).map((t) => ({ ...t, final: true }));
+    const snap: LiveSnapshot = {
+      status: endReason === 'ERROR' ? 'FAILED' : 'ENDED',
+      endReason,
+      startedAt: call.readyAt === null ? null : new Date(call.readyAt),
+      durationMs,
+      turns,
+      goalsAchieved: [],
+      stateChanges: {},
+      usage: report?.usage ?? { inputAudioTokens: 0, outputAudioTokens: 0, inputTextTokens: 0, outputTextTokens: 0, cachedInputTokens: 0 },
+      media: null,
+      liveMetrics: report?.liveMetrics ?? { userSpeakingMs: 0, responseLatenciesMs: [] },
+      recording: { active: false, started: false, result: null },
+    };
+    const values = { ...call.values };
+    this.enqueue(id, () => this.persistEvent(id, 'ENDED', durationMs, { reason: endReason, direct: true }));
+    this.enqueue(id, () => this.persistFinal(id, call.userId, snap, values));
+  }
+
+  /** Closes direct calls whose phone went silent, never connected, or ran far past their time. */
+  private sweepDirect(now = Date.now()): void {
+    for (const [id, call] of this.direct) {
+      if (call.readyAt === null && now - call.connectedAt > TOKEN_CONNECT_MS + 30_000) {
+        this.finishDirect(id, call, 'ERROR', undefined, now);
+      } else if (now - call.lastSeen > DIRECT_SILENCE_MS) {
+        this.finishDirect(id, call, 'CONNECTION_LOST', undefined, call.lastSeen);
+      } else if (call.readyAt !== null && now - call.readyAt > call.plannedMs + 120_000) {
+        this.finishDirect(id, call, 'TIME_LIMIT', undefined, now);
+      }
+    }
   }
 
   private async answerOffer(sdpOffer: string) {
@@ -680,7 +898,7 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
     });
   }
 
-  private turnsWrite(id: string, snap: LiveSnapshot): Prisma.PrismaPromise<unknown>[] {
+  private turnsWrite(id: string, snap: Pick<LiveSnapshot, 'turns' | 'status'>): Prisma.PrismaPromise<unknown>[] {
     const finals = snap.turns.filter((t) => t.final || snap.status === 'ENDED' || snap.status === 'FAILED');
     return [
       this.prisma.conversationTurn.deleteMany({ where: { sessionId: id } }),

@@ -91,7 +91,18 @@ export async function startFakeGemini(): Promise<FakeGemini> {
 
   // REST side: the after-call evaluation (generateContent with structured output).
   const evaluations: string[] = [];
+  const tokens = new Map<string, Record<string, unknown>>();
   const server: Server = createServer((req, res) => {
+    if (req.method === 'POST' && req.url === '/v1beta/auth_tokens' && req.headers['x-goog-api-key'] === 'fake-gemini-key') {
+      let body = '';
+      req.on('data', (c: Buffer) => (body += c.toString()));
+      req.on('end', () => {
+        const name = `auth_tokens/fake-${tokens.size + 1}`;
+        tokens.set(name, (JSON.parse(body) as { bidiGenerateContentSetup: Record<string, unknown> }).bidiGenerateContentSetup);
+        res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ name }));
+      });
+      return;
+    }
     const m = req.url?.match(/^\/v1beta\/models\/([^/:]+):generateContent$/);
     if (req.method !== 'POST' || !m || req.headers['x-goog-api-key'] !== 'fake-gemini-key') {
       res.writeHead(404).end();
@@ -116,14 +127,18 @@ export async function startFakeGemini(): Promise<FakeGemini> {
   });
   const wss = new WebSocketServer({ server });
   wss.on('connection', (ws: WebSocket, req) => {
-    if (req.headers['x-goog-api-key'] !== 'fake-gemini-key') {
+    // Direct calls: a single-use token whose setup wins over whatever the phone sends.
+    const token = new URL(req.url ?? '/', 'http://x').searchParams.get('access_token');
+    const tokenSetup = token ? tokens.get(token) : undefined;
+    if (token) tokens.delete(token);
+    if (req.headers['x-goog-api-key'] !== 'fake-gemini-key' && !tokenSetup) {
       ws.close(1008, 'API key not valid');
       return;
     }
     ws.on('message', (data) => {
       const msg = JSON.parse(data.toString()) as Record<string, any>;
       if (msg.setup) {
-        setups.push(msg.setup);
+        setups.push(tokenSetup ? { ...msg.setup, ...tokenSetup } : msg.setup);
         ws.send(JSON.stringify({ setupComplete: {} }));
       } else if (msg.realtimeInput) {
         audio++;

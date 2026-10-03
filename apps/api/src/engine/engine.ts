@@ -16,6 +16,7 @@ import {
   NO_CORRECTION,
   PRESSURE,
   REPLAY,
+  styleReminderCue,
   replayOpeningCue,
   SAFETY,
   TOOLS_GUIDANCE,
@@ -82,6 +83,8 @@ export interface PreparedConversation {
   goals: Array<{ id: string; description: string; label?: string }>;
   openingCue: string;
   wrapUpCue: string;
+  /** Repeated silently during long calls so the voice keeps its accent and persona (empty: none). */
+  styleCue: string;
   tools: ToolDeclaration[];
   turnTaking: (typeof TURN_TAKING)[EnglishLevel];
   /** When the AI may end the call: normal conversations need ~45 s and two answers; replays just one answer. */
@@ -141,6 +144,7 @@ export function prepareConversation(input: PrepareInput): PreparedConversation {
     openingCue: replay ? replayOpeningCue(input.replayQuestion!) : openingCue(kind, rolled.values, { rng, now, timeZone: input.timeZone }),
     // A replay is a single answer: no "wrap up" nudge.
     wrapUpCue: replay ? '' : WRAP_UP_CUE,
+    styleCue: replay ? '' : styleReminderCue(input.accent),
     tools: toolsFor(kind),
     turnTaking: TURN_TAKING[input.difficulty],
     endPolicy: replay ? 'single_answer' : 'conversation',

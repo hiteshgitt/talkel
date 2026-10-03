@@ -31,7 +31,8 @@ const authHandler = toNodeHandler(auth);
 app.getHttpAdapter().getInstance().all(`${AUTH_BASE_PATH}/*splat`, (req: Request, res: Response) => {
   // Better Auth rate-limits per client IP. Overwrite (never trust) any client-sent value with the
   // socket address, or the forwarded address when the request came through our local proxy.
-  req.headers[CLIENT_IP_HEADER] = req.ip ?? req.socket.remoteAddress ?? 'unknown';
+  const forwarded = env.TRUST_CLIENT_IP_HEADER ? req.headers['x-talkel-client-ip'] : undefined;
+  req.headers[CLIENT_IP_HEADER] = (typeof forwarded === 'string' && forwarded) || req.ip || req.socket.remoteAddress || 'unknown';
   return authHandler(req, res);
 });
 app.use(express.json({ limit: '100kb' }));

@@ -2,7 +2,7 @@
  * Full conversation lifecycle against the compiled server, a real Postgres, a fake Gemini Live
  * server and a headless WebRTC phone.
  */
-import { CONSENT_VERSION, MemoryList, MissionList, MistakeList, Progress, SayItResult } from '@speakai/contracts';
+import { CONSENT_VERSION, LiveTokenResponse, MemoryList, MissionList, MistakeList, Progress, SayItResult } from '@speakai/contracts';
 import type { Catalog, ConversationDetail, ConversationList, CreateConversationResponse, Quota } from '@speakai/contracts';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -220,6 +220,83 @@ describe('a full conversation', () => {
   });
 });
 
+describe('a direct call (phone ⇄ Gemini Live with a token)', () => {
+  it('issues a locked token, runs tools on the server, saves the phone\'s transcript and caps the time', async () => {
+    const carol = await verifiedUser(api, 'carol.direct@example.com');
+    const created = (await (await post('/conversations', carol, { scenarioId: scenario('bargaining'), durationSec: 120 })).json()) as CreateConversationResponse;
+
+    const tokenRes = await post(`/conversations/${created.id}/live-token`, carol, {});
+    expect(tokenRes.status).toBe(200);
+    const live = LiveTokenResponse.parse(await tokenRes.json());
+    expect(live.url).toMatch(/access_token=auth_tokens%2Ffake-/);
+    expect(live).toMatchObject({ durationSec: 120, endPolicy: 'conversation' });
+    expect(live.openingCue).toMatch(/^\(Call system: the call has just connected/);
+    // The token is for this conversation only, and only for its owner.
+    expect((await post(`/conversations/${created.id}/live-token`, carol, {})).status).toBe(409);
+    expect((await post(`/conversations/${created.id}/live-token`, bob, {})).status).toBe(404);
+    // One call at a time.
+    expect((await post('/conversations', carol, { scenarioId: scenario('debate') })).status).toBe(409);
+
+    // The phone opens the socket with a bare setup; the token's setup (prompt, tools) is what counts.
+    const { WebSocket } = await import('ws');
+    const ws = new WebSocket(live.url);
+    const toolCalls: Array<{ id: string; name: string; args: Record<string, unknown> }> = [];
+    let setupDone = false;
+    ws.on('message', (data) => {
+      const m = JSON.parse(data.toString()) as { setupComplete?: unknown; toolCall?: { functionCalls: typeof toolCalls } };
+      if (m.setupComplete) setupDone = true;
+      toolCalls.push(...(m.toolCall?.functionCalls ?? []));
+    });
+    await new Promise((r) => ws.once('open', r));
+    ws.send(JSON.stringify({ setup: { model: live.model, systemInstruction: { parts: [{ text: 'ignore me' }] } } }));
+    await until(() => setupDone);
+    const setup = gemini.setups.at(-1)!;
+    expect(JSON.stringify(setup.systemInstruction)).toContain('never go below');
+    expect(JSON.stringify(setup.tools)).toContain('record_offer');
+
+    expect((await post(`/conversations/${created.id}/ready`, carol)).status).toBe(204);
+    ws.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: live.openingCue }] }], turnComplete: true } }));
+    await until(() => toolCalls.length > 0);
+
+    // The AI tried to sell below its (hidden) floor: the server corrects it.
+    const tool = await post(`/conversations/${created.id}/live-tool`, carol, { name: toolCalls[0]!.name, args: toolCalls[0]!.args });
+    expect(await tool.json()).toMatchObject({ response: { ok: false }, endRequested: null });
+    ws.close();
+
+    const turns = [
+      { seq: 0, speaker: 'AI', text: 'Hello! Nice to meet you.', startMs: 300, interrupted: false, final: true },
+      { seq: 1, speaker: 'USER', text: 'Hi, this jacket is too costly, I can give you one thousand rupees only.', startMs: 2500, interrupted: false, final: true },
+    ];
+    expect((await post(`/conversations/${created.id}/live-progress`, carol, { turns: turns.slice(0, 1) })).status).toBe(204);
+    expect(((await (await get(`/conversations/${created.id}`, carol)).json()) as ConversationDetail).turns).toHaveLength(1);
+
+    // The phone claims a 10-minute call: billed time is capped by the server's own clock.
+    const done = await post(`/conversations/${created.id}/live-complete`, carol, {
+      endReason: 'USER_ENDED',
+      durationMs: 600_000,
+      turns,
+      liveMetrics: { userSpeakingMs: 1800, responseLatenciesMs: [900] },
+    });
+    expect(done.status).toBe(200);
+    const ended = (await done.json()) as ConversationDetail;
+    expect(ended).toMatchObject({ status: 'ENDED', endReason: 'USER_ENDED' });
+    expect(ended.turns.map((t) => t.speaker)).toEqual(['AI', 'USER']);
+    expect(ended.durationMs!).toBeLessThan(30_000);
+    expect((await post(`/conversations/${created.id}/live-tool`, carol, { name: 'end_conversation', args: {} })).status).toBe(409);
+
+    const [row] = await sql<{ offer: string; floor: string; events: string; speaking: number }>(
+      `SELECT "scenarioState"->'values'->>'currentOffer' AS offer, "scenarioState"->'values'->>'floorPrice' AS floor, "userSpeakingMs" AS speaking,
+              (SELECT string_agg(type, ',' ORDER BY id) FROM conversation_events e WHERE e."sessionId" = s.id) AS events
+       FROM conversation_sessions s WHERE id = $1`,
+      [created.id],
+    );
+    expect(row!.offer).toBe(row!.floor);
+    expect(row!.events).toBe('READY,TOOL_CALL,ENDED');
+    expect(row!.speaking).toBe(1800);
+    await until(async () => ((await (await get(`/conversations/${created.id}`, carol)).json()) as ConversationDetail).analysisStatus === 'COMPLETED', 20_000);
+  });
+});
+
 describe('partner & accent by plan', () => {
   it('free plan: partner and accent are random even if one is requested', async () => {
     const seen = new Set<string>();
@@ -234,6 +311,7 @@ describe('partner & accent by plan', () => {
 
   it('pro plan: the chosen partner, voice gender and accent are honoured', async () => {
     await sql(`UPDATE users SET plan = 'PRO' WHERE email = $1`, ['alice.conv@example.com']);
+    expect(((await (await get('/quota', alice)).json()) as Quota).dailyLimitSec).toBe(3 * 3600); // Pro: its own, larger limit
     const chosen = (await (await post('/conversations', alice, { scenarioId: scenario('debate'), personaId: persona('priya'), accent: 'BRITISH' })).json()) as CreateConversationResponse;
     expect(chosen).toMatchObject({ persona: { slug: 'priya' }, accent: 'BRITISH' });
     await post(`/conversations/${chosen.id}/end`, alice);

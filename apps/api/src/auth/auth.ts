@@ -39,7 +39,7 @@ export function createAuth({ env, prisma, mailer }: AuthDeps) {
 
     emailAndPassword: {
       enabled: true,
-      requireEmailVerification: true,
+      requireEmailVerification: env.REQUIRE_EMAIL_VERIFICATION,
       minPasswordLength: 8,
       maxPasswordLength: 128,
       revokeSessionsOnPasswordReset: true,
@@ -100,6 +100,9 @@ export function createAuth({ env, prisma, mailer }: AuthDeps) {
             await prisma.$transaction([
               prisma.profile.create({ data: { userId: user.id, displayName: user.name || null } }),
               prisma.userSettings.create({ data: { userId: user.id } }),
+              ...(env.LIFETIME_PRO_EMAILS.includes(user.email.toLowerCase())
+                ? [prisma.user.update({ where: { id: user.id }, data: { plan: 'PRO' } })]
+                : []),
             ]);
           },
         },

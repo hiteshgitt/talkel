@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, type OnModuleInit } from '@nestjs/common';
 import {
   CONSENT_VERSION,
   EnglishLevel,
@@ -14,10 +14,20 @@ import {
 } from '@speakai/contracts';
 import type { PrismaClient, Profile, User, UserSettings } from '@speakai/db';
 import { PRISMA } from '../db/prisma.module.js';
+import { ENV, type Env } from '../config/env.js';
 
 @Injectable()
-export class UsersService {
-  constructor(@Inject(PRISMA) private readonly prisma: PrismaClient) {}
+export class UsersService implements OnModuleInit {
+  constructor(
+    @Inject(PRISMA) private readonly prisma: PrismaClient,
+    @Inject(ENV) private readonly env: Env,
+  ) {}
+
+  /** Lifetime Pro accounts stay Pro whatever else changes their plan. */
+  async onModuleInit(): Promise<void> {
+    if (!this.env.LIFETIME_PRO_EMAILS.length) return;
+    await this.prisma.user.updateMany({ where: { email: { in: this.env.LIFETIME_PRO_EMAILS }, plan: { not: 'PRO' } }, data: { plan: 'PRO' } });
+  }
 
   async me(userId: string): Promise<Me> {
     const [{ user, profile, settings }, passwords] = await Promise.all([

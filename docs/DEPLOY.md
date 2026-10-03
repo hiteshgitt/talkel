@@ -60,3 +60,24 @@ the API with the final URLs (`APP_BASE_URL`, `WEB_BASE_URL` — used by sign-in 
 
 Mobile production builds: `EXPO_PUBLIC_API_URL=<api url>/v1`, `EXPO_PUBLIC_WEB_URL=<web url>` (an EAS `production`
 profile env), then `eas build --profile production`.
+
+# Staging (free, no card): Render + Supabase + Cloudflare Worker
+
+- **Calls go phone ⇄ Gemini Live directly.** The API issues a single-use Gemini token per connection
+  (`POST /v1/conversations/:id/live-token`) with the whole session setup locked in (prompt, voice, tools), runs tool
+  calls (`live-tool`), receives the transcript every 10 s (`live-progress`) and at the end (`live-complete`). A dropped
+  connection resumes with a new token carrying the provider's resume handle. The API no longer touches audio, so a
+  tiny instance is enough. (Call recording is not available in this mode yet.)
+- **API:** Render free web service `talkel-api` (`render.yaml`, Docker `deploy/api.Dockerfile`, region Singapore),
+  in-process feedback worker on the Postgres queue. Secrets are set in Render, never in the repo.
+- **Database:** Supabase (`DATABASE_URL` = the pooler URL).
+- **Permanent address:** `https://talkel-staging.talkel.workers.dev` — Cloudflare Worker (`deploy/staging-worker/`):
+  `/v1/*` → Render, everything else → the web app. Its cron pings `/v1/health` every 10 minutes so Render's free
+  instance never sleeps. Re-point with `deploy/staging-worker/deploy.sh <api-origin> <web-origin>`.
+- **Staging-only settings:** `REQUIRE_EMAIL_VERIFICATION=false`, `TRUST_CLIENT_IP_HEADER=true`, `LIFETIME_PRO_EMAILS`.
+- **App for testers:** `eas build --profile staging --platform android` → an APK with the staging address built in.
+
+## Previous staging (this machine)
+
+Kept as a fallback: Tailscale Funnel (`deploy/staging-up.sh`) and the cron watchdog (`deploy/staging-watchdog.sh`).
+Remove the watchdog from the crontab once Render is live, or it re-points the Worker at this machine.

@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { type ReactNode, useState } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -37,18 +38,23 @@ export function Screen({
   const s = useStyles();
   return (
     <SafeAreaView style={s.screen} edges={edges}>
-      {scroll ? (
-        <ScrollView
-          contentContainerStyle={[s.content, style]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {children}
-        </ScrollView>
-      ) : (
-        <View style={[s.content, s.fill, style]}>{children}</View>
-      )}
-      {footer ? <View style={s.footer}>{footer}</View> : null}
+      {/* Lifts the content and footer buttons above the keyboard. Padding works on both platforms
+          (Android draws edge-to-edge, so the window doesn't shrink for the keyboard by itself). */}
+      <KeyboardAvoidingView style={s.fill} behavior="padding">
+        {scroll ? (
+          <ScrollView
+            contentContainerStyle={[s.content, style]}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            showsVerticalScrollIndicator={false}
+          >
+            {children}
+          </ScrollView>
+        ) : (
+          <View style={[s.content, s.fill, style]}>{children}</View>
+        )}
+        {footer ? <View style={s.footer}>{footer}</View> : null}
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

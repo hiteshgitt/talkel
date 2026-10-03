@@ -25,7 +25,8 @@ export class QuotaService {
       _sum: { billableSeconds: true },
     });
     const usedTodaySec = used._sum.billableSeconds ?? 0;
-    const dailyLimitSec = this.env.FREE_DAILY_SECONDS;
+    const plan = (await this.prisma.user.findUnique({ where: { id: userId }, select: { plan: true } }))?.plan;
+    const dailyLimitSec = plan === 'PRO' ? this.env.PRO_DAILY_SECONDS : this.env.FREE_DAILY_SECONDS;
     return {
       dailyLimitSec,
       usedTodaySec,

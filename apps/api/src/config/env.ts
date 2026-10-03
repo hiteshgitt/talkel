@@ -91,6 +91,23 @@ const EnvSchema = z.object({
   POC_MAX_SESSION_SECONDS: z.coerce.number().int().min(90).max(3600).default(300),
   /** Free conversation time per user per local day (PRD decision: 10 minutes). */
   FREE_DAILY_SECONDS: z.coerce.number().int().min(60).default(600),
+  /** Accounts that are always Pro (the owner, early supporters): applied at sign-up and on every start. */
+  LIFETIME_PRO_EMAILS: z
+    .string()
+    .optional()
+    .transform((v) => (v ?? '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean)),
+  /** Daily speaking time on the Pro plan. */
+  PRO_DAILY_SECONDS: z.coerce.number().int().min(60).default(3 * 3600),
+  /** Staging only: let new accounts in without verifying their email (no real email delivery yet). */
+  REQUIRE_EMAIL_VERIFICATION: z
+    .string()
+    .optional()
+    .transform((v) => v !== 'false' && v !== '0'),
+  /** Behind our staging Worker: take the client IP from its x-talkel-client-ip header (per-user rate limits). */
+  TRUST_CLIENT_IP_HEADER: z
+    .string()
+    .optional()
+    .transform((v) => v === 'true' || v === '1'),
   /** Hard cap on any single conversation, whatever the user asks for. */
   CONVERSATION_MAX_SECONDS: z.coerce.number().int().min(60).max(3600).default(1800),
   CALL_LOG_DIR: z.string().min(1).default('./logs/calls'),

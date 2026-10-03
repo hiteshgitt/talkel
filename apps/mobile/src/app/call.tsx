@@ -225,6 +225,7 @@ function Controls({ call, state, onEnd }: { call: RealtimeCall | null; state: Ca
             call?.toggleMute();
           }}
         />
+        {state.canRecord ? (
         <RoundButton
           label={state.recording ? 'Stop rec.' : 'Record'}
           icon={state.recording ? 'stop' : 'radio-button-on'}
@@ -237,6 +238,7 @@ function Controls({ call, state, onEnd }: { call: RealtimeCall | null; state: Ca
             void call?.toggleRecording();
           }}
         />
+        ) : null}
         <RoundButton
           label={ROUTE[state.audioRoute].label}
           icon={ROUTE[state.audioRoute].icon}

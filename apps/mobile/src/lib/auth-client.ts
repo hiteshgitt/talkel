@@ -19,5 +19,8 @@ export const authClient = createAuthClient({
   ],
 });
 
-/** Where the email-verification link sends the user after verifying: back into the app. */
-export const VERIFIED_CALLBACK_URL = 'speakai://sign-in?verified=1';
+/**
+ * Where the email-verification link sends the user after verifying: back into the app, to the
+ * "check your email" screen, which then signs them in by itself.
+ */
+export const VERIFIED_CALLBACK_URL = 'speakai://check-email?verified=1';

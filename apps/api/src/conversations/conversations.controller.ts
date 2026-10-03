@@ -7,6 +7,12 @@ import {
   type ConversationList,
   CreateConversationRequest,
   type CreateConversationResponse,
+  LiveCompleteRequest,
+  LiveProgressRequest,
+  LiveTokenRequest,
+  type LiveTokenResponse,
+  LiveToolRequest,
+  type LiveToolResponse,
   type Quota,
   ReplayRequest,
   SayItRequest,
@@ -106,6 +112,34 @@ export class ConversationsController {
   @HttpCode(200)
   connect(@CurrentUser() user: SessionUser, @Param('id') id: string, @Body() body: unknown): Promise<ConnectResponse> {
     return this.conversations.connect(user.id, id, parseBody(ConnectRequest, body));
+  }
+
+  /** Direct calls: a single-use token for the phone to talk to Gemini Live (start, or resume after a drop). */
+  @Post('conversations/:id/live-token')
+  @HttpCode(200)
+  liveToken(@CurrentUser() user: SessionUser, @Param('id') id: string, @Body() body: unknown): Promise<LiveTokenResponse> {
+    return this.conversations.liveToken(user.id, id, parseBody(LiveTokenRequest, body ?? {}));
+  }
+
+  /** Direct calls: run a tool the AI called. */
+  @Post('conversations/:id/live-tool')
+  @HttpCode(200)
+  liveTool(@CurrentUser() user: SessionUser, @Param('id') id: string, @Body() body: unknown): Promise<LiveToolResponse> {
+    return this.conversations.liveTool(user.id, id, parseBody(LiveToolRequest, body));
+  }
+
+  /** Direct calls: transcript so far (sent every few seconds; also the call's heartbeat). */
+  @Post('conversations/:id/live-progress')
+  @HttpCode(204)
+  liveProgress(@CurrentUser() user: SessionUser, @Param('id') id: string, @Body() body: unknown): Promise<void> {
+    return this.conversations.liveProgress(user.id, id, parseBody(LiveProgressRequest, body).turns);
+  }
+
+  /** Direct calls: the call ended on the phone; save it and start the feedback. */
+  @Post('conversations/:id/live-complete')
+  @HttpCode(200)
+  liveComplete(@CurrentUser() user: SessionUser, @Param('id') id: string, @Body() body: unknown): Promise<ConversationDetail> {
+    return this.conversations.liveComplete(user.id, id, parseBody(LiveCompleteRequest, body));
   }
 
   /** The phone's media is up: the AI opens the conversation. */

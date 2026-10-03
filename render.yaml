@@ -1,0 +1,46 @@
+# Talkel staging API on Render's free plan (no card): one always-on web service.
+# Voice calls go phone ⇄ Gemini Live directly, so this small instance only serves the API and runs the
+# after-call feedback (Postgres queue, in-process worker). The database is Supabase.
+# The staging Cloudflare Worker (deploy/staging-worker) pings /v1/health every 10 minutes so the
+# service never sleeps. Secrets are set in the Render dashboard / API, never here.
+services:
+  - type: web
+    name: talkel-api
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./deploy/api.Dockerfile
+    dockerContext: .
+    healthCheckPath: /v1/health
+    autoDeploy: false
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: QUEUE_DRIVER
+        value: postgres
+      - key: RUN_WORKER_IN_API
+        value: 'true'
+      - key: REQUIRE_EMAIL_VERIFICATION
+        value: 'false'
+      - key: TRUST_CLIENT_IP_HEADER
+        value: 'true'
+      - key: CALL_LOG_DIR
+        value: /tmp/talkel/calls
+      - key: RECORDINGS_DIR
+        value: /tmp/talkel/recordings
+      - key: APP_BASE_URL
+        sync: false
+      - key: WEB_BASE_URL
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: BETTER_AUTH_SECRET
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: LIFETIME_PRO_EMAILS
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
