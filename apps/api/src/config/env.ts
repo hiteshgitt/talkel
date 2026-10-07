@@ -44,7 +44,7 @@ const EnvSchema = z.object({
   /** Gemini REST base (after-call evaluation). */
   GEMINI_API_BASE: z.url().default('https://generativelanguage.googleapis.com/v1beta'),
   /** Evaluation models in order of preference; the next one is tried when a model is overloaded. */
-  EVAL_MODELS: z.string().min(1).default('gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash,gemini-flash-latest'),
+  EVAL_MODELS: z.string().min(1).default('gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash,gemini-flash-latest,gemini-flash-lite-latest'),
   /** Redis for the job queue (after-call analysis). */
   REDIS_URL: z.string().min(1).default('redis://localhost:6381'),
   /** Comma-separated extra web origins allowed to use sign-in (e.g. a staging tunnel URL). */
