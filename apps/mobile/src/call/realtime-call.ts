@@ -90,6 +90,32 @@ interface GeminiMessage {
   sessionResumptionUpdate?: { newHandle?: string; resumable?: boolean };
 }
 
+/** A connection that hasn't finished setting up by then is treated as failed. */
+const SETUP_TIMEOUT_MS = 15_000;
+
+/** UTF-8 bytes → string (TextDecoder when the JS engine has it). */
+function utf8(buffer: ArrayBuffer): string {
+  if (typeof TextDecoder !== 'undefined') return new TextDecoder().decode(buffer);
+  const bytes = new Uint8Array(buffer);
+  const parts: string[] = [];
+  let points: number[] = [];
+  for (let i = 0; i < bytes.length; ) {
+    const b = bytes[i++]!;
+    let cp: number;
+    if (b < 0x80) cp = b;
+    else if (b < 0xe0) cp = ((b & 0x1f) << 6) | (bytes[i++]! & 0x3f);
+    else if (b < 0xf0) cp = ((b & 0x0f) << 12) | ((bytes[i++]! & 0x3f) << 6) | (bytes[i++]! & 0x3f);
+    else cp = ((b & 0x07) << 18) | ((bytes[i++]! & 0x3f) << 12) | ((bytes[i++]! & 0x3f) << 6) | (bytes[i++]! & 0x3f);
+    points.push(cp);
+    if (points.length === 4096) {
+      parts.push(String.fromCodePoint(...points));
+      points = [];
+    }
+  }
+  parts.push(String.fromCodePoint(...points));
+  return parts.join('');
+}
+
 /** Transcription placeholders such as "<noise>" are markers, not speech. */
 const clean = (text: string | undefined) => (text ?? '').replace(/<[^<>]{1,40}>/g, '');
 
@@ -216,17 +242,31 @@ export class RealtimeCall {
 
   private openSocket(url: string): void {
     const ws = new WebSocket(url);
+    // Gemini Live sends its JSON messages as binary frames.
+    ws.binaryType = 'arraybuffer';
     this.ws = ws;
     this.setupDone = false;
+    this.timers.push(
+      setTimeout(() => {
+        if (ws !== this.ws || this.setupDone || this.closed) return;
+        this.ws = null;
+        ws.close();
+        if (this.startedAt === null) this.fail('The AI voice service could not start the call');
+        else void this.rejoin();
+      }, SETUP_TIMEOUT_MS),
+    );
     ws.onopen = () => {
       // The token carries the real setup; the model name is all the endpoint needs from us.
       if (ws === this.ws) ws.send(JSON.stringify({ setup: { model: this.live!.model } }));
     };
     ws.onmessage = (e) => {
-      if (ws !== this.ws || typeof e.data !== 'string') return;
+      if (ws !== this.ws) return;
+      const data: unknown = e.data;
+      const text = typeof data === 'string' ? data : data && typeof data === 'object' && 'byteLength' in data ? utf8(data as ArrayBuffer) : null;
+      if (text === null) return;
       let message: GeminiMessage;
       try {
-        message = JSON.parse(e.data) as GeminiMessage;
+        message = JSON.parse(text) as GeminiMessage;
       } catch {
         return; // ignore malformed frames
       }
