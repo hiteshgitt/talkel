@@ -91,6 +91,37 @@ export function resetPasswordEmail(to: string, name: string, url: string): Email
   };
 }
 
+export function welcomeEmail(to: string, name: string, url: string): EmailMessage {
+  return {
+    to,
+    subject: 'Welcome to Talkel 👋',
+    text:
+      `Hi ${name},\n\nWelcome to Talkel! Your account is ready.\n\n` +
+      `Start with a friendly chat, or practise a job interview for your own role. After each call you get feedback on ` +
+      `your grammar, vocabulary and fluency.\n\nOpen Talkel: ${url}`,
+    html: layout(
+      `Welcome, ${escapeHtml(name)} 👋`,
+      'Your account is ready. Start with a friendly chat, or practise a job interview for your own role — after each call you get feedback on your grammar, vocabulary and fluency.',
+      'Start practising',
+      url,
+    ),
+  };
+}
+
+export function passwordChangedEmail(to: string, name: string, url: string): EmailMessage {
+  return {
+    to,
+    subject: 'Your Talkel password was changed',
+    text: `Hi ${name},\n\nYour Talkel password was just changed, and you were signed out on your other devices.\n\nIf this wasn't you, reset your password right away: ${url}`,
+    html: layout(
+      'Your password was changed',
+      `Hi ${escapeHtml(name)}, your Talkel password was just changed, and you were signed out on your other devices. If this wasn't you, reset your password right away.`,
+      'Reset password',
+      url,
+    ),
+  };
+}
+
 export function accountDeletedEmail(to: string, name: string, url: string): EmailMessage {
   return {
     to,

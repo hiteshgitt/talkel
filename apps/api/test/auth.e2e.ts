@@ -49,6 +49,31 @@ describe('sign-up and email verification', () => {
       settings: { feedbackLanguage: 'en', defaultDifficulty: 'INTERMEDIATE', liveCorrection: false },
       onboarded: false,
     });
+    // Welcome email once the address is confirmed — and only once.
+    expect(api.output().split('email to alice@example.com: Welcome to Talkel').length - 1).toBe(1);
+  });
+
+  it('resets the password and tells the user it was changed', async () => {
+    await verifiedUser('reset.me@example.com');
+    const ask = await fetch(`${api.base}/auth/request-password-reset`, {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify({ email: 'reset.me@example.com', redirectTo: `${WEB_ORIGIN}/reset-password` }),
+    });
+    expect(ask.status).toBe(200);
+    let token: string | undefined;
+    for (let i = 0; i < 40 && !token; i++) {
+      const out = api.output();
+      token = out.slice(out.lastIndexOf('email to reset.me@example.com: Reset your Talkel password')).match(/reset-password\/([\w-]+)/)?.[1];
+      if (!token) await new Promise((r) => setTimeout(r, 100));
+    }
+    const reset = await fetch(`${api.base}/auth/reset-password`, {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify({ token, newPassword: 'brand-new-horse-7' }),
+    });
+    expect(reset.status).toBe(200);
+    await expect.poll(() => api.output().includes('email to reset.me@example.com: Your Talkel password was changed')).toBe(true);
   });
 
   it('ignores a client-supplied role (no self-promotion to admin)', async () => {

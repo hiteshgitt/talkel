@@ -5,7 +5,16 @@ import { prismaAdapter } from 'better-auth/adapters/prisma';
 import type { Env } from '../config/env.js';
 import { purgeUserFiles } from '../account/account-cleanup.js';
 import { createRecordingStore } from '../recording/recording-store.js';
-import { accountDeletedEmail, type Mailer, resetPasswordEmail, verificationEmail } from '../mail/mailer.js';
+import { Logger } from '@nestjs/common';
+import {
+  accountDeletedEmail,
+  type EmailMessage,
+  type Mailer,
+  passwordChangedEmail,
+  resetPasswordEmail,
+  verificationEmail,
+  welcomeEmail,
+} from '../mail/mailer.js';
 
 export const AUTH_BASE_PATH = '/v1/auth';
 /** Internal header carrying the real client IP to Better Auth (rate limits, session metadata). */
@@ -27,6 +36,10 @@ export function createAuth({ env, prisma, mailer }: AuthDeps) {
     env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
       ? { google: { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET } }
       : {};
+  const logger = new Logger('Auth');
+  /** Courtesy emails (welcome, password changed): a failed send is logged, never fails the request. */
+  const notify = (message: EmailMessage) =>
+    mailer.send(message).catch((err: unknown) => logger.warn(`email "${message.subject}" failed: ${(err as Error).message}`));
 
   return betterAuth({
     appName: 'Talkel',
@@ -46,12 +59,19 @@ export function createAuth({ env, prisma, mailer }: AuthDeps) {
       sendResetPassword: async ({ user, url }) => {
         await mailer.send(resetPasswordEmail(user.email, user.name, url));
       },
+      onPasswordReset: async ({ user }) => {
+        await notify(passwordChangedEmail(user.email, user.name, `${env.WEB_BASE_URL}/forgot-password`));
+      },
     },
     emailVerification: {
       sendOnSignUp: true,
       autoSignInAfterVerification: true,
       sendVerificationEmail: async ({ user, url }) => {
         await mailer.send(verificationEmail(user.email, user.name, url));
+      },
+      // Welcome once the address is confirmed (users who verify after signing up).
+      afterEmailVerification: async (user) => {
+        if (env.REQUIRE_EMAIL_VERIFICATION) await notify(welcomeEmail(user.email, user.name, env.WEB_BASE_URL));
       },
     },
     socialProviders: google,
@@ -104,6 +124,8 @@ export function createAuth({ env, prisma, mailer }: AuthDeps) {
                 ? [prisma.user.update({ where: { id: user.id }, data: { plan: 'PRO' } })]
                 : []),
             ]);
+            // Already verified (Google) or verification is off: welcome now; otherwise after verifying.
+            if (user.emailVerified || !env.REQUIRE_EMAIL_VERIFICATION) await notify(welcomeEmail(user.email, user.name, env.WEB_BASE_URL));
           },
         },
       },
