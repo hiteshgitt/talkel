@@ -149,5 +149,5 @@ function toMe(user: User, profile: Profile, settings: UserSettings, hasPassword:
 /** Free plan: the partner's voice and accent are picked at random. Pro: the user chooses. */
 export function entitlementsFor(plan: string): Me['entitlements'] {
   const pro = plan === 'PRO';
-  return { choosePartner: pro, chooseAccent: pro };
+  return { choosePartner: pro, chooseAccent: pro, recordCalls: pro };
 }

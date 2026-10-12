@@ -151,6 +151,7 @@ export function friendlyError(err: unknown): string {
     if (err.code === 'QUOTA_EXCEEDED') return 'You’ve used today’s free practice time. It resets at midnight.';
     if (err.code === 'ACTIVE_CONVERSATION_EXISTS') return 'You already have a conversation in progress.';
     if (err.code === 'SESSION_NOT_CONNECTABLE') return 'This conversation expired. Please start a new one.';
+    if (err.code === 'PRO_REQUIRED') return 'Recording calls is a Pro feature.';
     if (err.code === 'CONSENT_REQUIRED') return 'Please accept the updated privacy notice (Profile) to record calls.';
     if (err.code === 'PROVIDER_QUOTA_EXHAUSTED' || err.code === 'PROVIDER_UNAVAILABLE') return 'The AI voice service is busy. Please try again in a moment.';
     return err.message;

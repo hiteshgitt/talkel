@@ -11,7 +11,7 @@ import { Gradient } from '@/components/gradient';
 import { haptic } from '@/lib/haptics';
 import type { AudioRoute, CallState, RealtimeCall } from '@/call/realtime-call';
 import { useRealtimeCall } from '@/call/use-realtime-call';
-import { CONVERSATIONS_KEY, QUOTA_KEY } from '@/lib/queries';
+import { CONVERSATIONS_KEY, QUOTA_KEY, useMe } from '@/lib/queries';
 import { type IconName, personaTint, withAlpha } from '@/lib/visuals';
 import { palettes, radius } from '@/theme';
 
@@ -212,9 +212,13 @@ function showResult(id: string) {
 
 function Controls({ call, state, onEnd }: { call: RealtimeCall | null; state: CallState; onEnd: () => void }) {
   const busy = state.phase === 'ending' || state.phase === 'ended';
+  const { data: me } = useMe();
+  const canRecord = me?.entitlements.recordCalls ?? false;
+  const [proNote, setProNote] = useState(false);
+  const recNote = state.recordingError ?? (proNote ? 'Recording calls is a Pro feature.' : null);
   return (
     <View style={styles.controlsWrap}>
-      {state.recordingError ? <Text style={styles.recError}>{state.recordingError}</Text> : null}
+      {recNote ? <Text style={styles.recError}>{recNote}</Text> : null}
       <View style={styles.dock}>
         <RoundButton
           label={state.muted ? 'Unmute' : 'Mute'}
@@ -232,10 +236,12 @@ function Controls({ call, state, onEnd }: { call: RealtimeCall | null; state: Ca
           iconColor={state.recording ? '#fff' : c.danger}
           active={state.recording}
           activeColor={c.danger}
+          locked={!canRecord}
           disabled={state.phase !== 'active'}
           onPress={() => {
             haptic.press();
-            void call?.toggleRecording();
+            if (canRecord) void call?.toggleRecording();
+            else setProNote(true);
           }}
         />
         ) : null}
@@ -286,6 +292,8 @@ function RoundButton(props: {
   activeColor?: string;
   iconColor?: string;
   disabled?: boolean;
+  /** A Pro feature on the free plan: shown with a lock. */
+  locked?: boolean;
 }) {
   const bg = props.active ? (props.activeColor ?? c.text) : 'rgba(255,255,255,0.08)';
   const fg = props.iconColor ?? (props.active ? c.bg : c.text);
@@ -300,6 +308,11 @@ function RoundButton(props: {
         style={({ pressed }) => [styles.round, { backgroundColor: bg }, (pressed || props.disabled) && styles.pressed]}
       >
         <Ionicons name={props.icon} size={26} color={fg} />
+        {props.locked ? (
+          <View style={styles.lock}>
+            <Ionicons name="lock-closed" size={11} color={c.bg} />
+          </View>
+        ) : null}
       </Pressable>
       <Text style={styles.roundLabel}>{props.label}</Text>
     </View>
@@ -338,6 +351,7 @@ const styles = StyleSheet.create({
   recError: { color: c.danger, fontSize: 13, textAlign: 'center' },
   roundWrap: { alignItems: 'center', gap: 8, width: 84 },
   round: { width: 64, height: 64, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
+  lock: { position: 'absolute', top: 2, right: 2, width: 20, height: 20, borderRadius: 10, backgroundColor: c.warning, alignItems: 'center', justifyContent: 'center' },
   pressed: { opacity: 0.55 },
   roundLabel: { color: c.textMuted, fontSize: 13 },
   end: { width: 76, height: 76, borderRadius: radius.pill, backgroundColor: c.danger, alignItems: 'center', justifyContent: 'center' },

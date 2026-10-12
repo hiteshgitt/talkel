@@ -540,7 +540,7 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
     await this.analysisQueue.enqueue(id, { force: true });
   }
 
-  /** Starts or pauses recording the live call. Requires the privacy notice that covers recordings. */
+  /** Starts or pauses recording the live call (Pro). Requires the privacy notice that covers recordings. */
   async setRecording(userId: string, id: string, req: RecordingToggleRequest): Promise<{ recording: boolean }> {
     await this.owned(userId, id);
     const run = this.running.get(id);
@@ -548,6 +548,10 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
     const live = call ? call.userId === userId : Boolean(run && run.userId === userId && !run.convo.isEnded);
     if (!live) throw problem(HttpStatus.CONFLICT, 'CONVERSATION_NOT_LIVE', 'You can only record a call that is in progress');
     if (req.on) {
+      const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { plan: true } });
+      if (!entitlementsFor(user?.plan ?? 'FREE').recordCalls) {
+        throw problem(HttpStatus.FORBIDDEN, 'PRO_REQUIRED', 'Recording calls is a Pro feature');
+      }
       const profile = await this.prisma.profile.findUnique({ where: { userId }, select: { consentVersion: true } });
       if (profile?.consentVersion !== CONSENT_VERSION) {
         throw problem(HttpStatus.FORBIDDEN, 'CONSENT_REQUIRED', 'Please accept the updated privacy notice to record calls');

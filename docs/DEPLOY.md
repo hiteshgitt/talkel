@@ -67,7 +67,8 @@ profile env), then `eas build --profile production`.
   (`POST /v1/conversations/:id/live-token`) with the whole session setup locked in (prompt, voice, tools), runs tool
   calls (`live-tool`), receives the transcript every 10 s (`live-progress`) and at the end (`live-complete`). A dropped
   connection resumes with a new token carrying the provider's resume handle. The API no longer touches audio, so a
-  tiny instance is enough. (Call recording is not available in this mode yet.)
+  tiny instance is enough. Recording (Pro) is the exception: while it is on, the phone uploads both voices to
+  `live-audio` (~1 s batches of PCM) and the API encodes the file.
 - **API:** Render free web service `talkel-api` (`render.yaml`, Docker `deploy/api.Dockerfile`, region Singapore),
   in-process feedback worker on the Postgres queue. Secrets are set in Render, never in the repo.
 - **Database:** Supabase (`DATABASE_URL` = the pooler URL).

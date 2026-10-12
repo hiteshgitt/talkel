@@ -74,7 +74,7 @@ export const Me = z.object({
     hasPassword: z.boolean(),
   }),
   /** What the plan allows. Free: the partner's voice and accent are chosen at random. */
-  entitlements: z.object({ choosePartner: z.boolean(), chooseAccent: z.boolean() }),
+  entitlements: z.object({ choosePartner: z.boolean(), chooseAccent: z.boolean(), recordCalls: z.boolean().default(false) }),
   profile: z.object({
     displayName: z.string().nullable(),
     nativeLanguage: z.string().nullable(),

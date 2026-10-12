@@ -111,13 +111,19 @@ describe('a full conversation', () => {
     await until(() => gemini.toolResponses.length > 0);
     expect(gemini.toolResponses[0]).toMatchObject({ id: 'offer-1', name: 'record_offer', response: { ok: false } });
 
-    // 5. recording: needs the current privacy notice, then captures both voices
+    // 5. recording: Pro only, needs the current privacy notice, then captures both voices
+    const free = await post(`/conversations/${created.id}/recording`, alice, { on: true });
+    expect(free.status).toBe(403);
+    expect(await free.json()).toMatchObject({ code: 'PRO_REQUIRED' });
+    await sql(`UPDATE users SET plan = 'PRO' WHERE email = $1`, ['alice.conv@example.com']);
     const denied = await post(`/conversations/${created.id}/recording`, alice, { on: true });
     expect(denied.status).toBe(403);
     expect(await denied.json()).toMatchObject({ code: 'CONSENT_REQUIRED' });
     expect((await post('/me/consent', alice, { consentVersion: CONSENT_VERSION })).status).toBe(200);
     const rec = await post(`/conversations/${created.id}/recording`, alice, { on: true });
     expect(await rec.json()).toEqual({ recording: true });
+    // Back to free (the plan is checked when recording starts; the quota checks below assume free).
+    await sql(`UPDATE users SET plan = 'FREE' WHERE email = $1`, ['alice.conv@example.com']);
     await until(() => phone.controls.some((c) => c.type === 'recording' && c.on === true));
     // Ask the fake AI to speak again so there is audio in the recording.
     const before = phone.aiPackets();
@@ -271,6 +277,7 @@ describe('a direct call (phone ⇄ Gemini Live with a token)', () => {
     expect(((await (await get(`/conversations/${created.id}`, carol)).json()) as ConversationDetail).turns).toHaveLength(1);
 
     // Recording: the phone uploads both voices (call clock) and the server builds the file.
+    await sql(`UPDATE users SET plan = 'PRO' WHERE email = $1`, ['carol.direct@example.com']);
     expect((await post('/me/consent', carol, { consentVersion: CONSENT_VERSION })).status).toBe(200);
     expect((await post(`/conversations/${created.id}/live-audio`, carol, { chunks: [], untilMs: 0 })).status).toBe(409); // not recording yet
     expect(await (await post(`/conversations/${created.id}/recording`, carol, { on: true, atMs: 1_000 })).json()).toEqual({ recording: true });

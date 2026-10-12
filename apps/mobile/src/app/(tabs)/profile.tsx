@@ -60,7 +60,7 @@ export default function ProfileScreen() {
           <Badge label={pro ? 'Pro' : 'Free plan'} tone={pro ? 'warning' : 'neutral'} icon={pro ? 'star' : undefined} />
           {me.profile.selfReportedLevel ? <Badge label={LEVEL_LABEL[me.profile.selfReportedLevel]} tone="accent" icon="bar-chart" /> : null}
         </View>
-        {!pro ? <Text style={s.note}>On the free plan your partner and accent are a surprise each time.</Text> : null}
+        {!pro ? <Text style={s.note}>On the free plan your partner and accent are a surprise each time. Pro lets you choose them and record your calls.</Text> : null}
       </Card>
 
       <Card>
