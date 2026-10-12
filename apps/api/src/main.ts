@@ -35,6 +35,8 @@ app.getHttpAdapter().getInstance().all(`${AUTH_BASE_PATH}/*splat`, (req: Request
   req.headers[CLIENT_IP_HEADER] = (typeof forwarded === 'string' && forwarded) || req.ip || req.socket.remoteAddress || 'unknown';
   return authHandler(req, res);
 });
+// Recorded call audio arrives in ~1 s batches of raw PCM.
+app.use('/v1/conversations/:id/live-audio', express.json({ limit: '1mb' }));
 app.use(express.json({ limit: '100kb' }));
 
 app.setGlobalPrefix('v1');

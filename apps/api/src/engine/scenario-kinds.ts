@@ -2,6 +2,7 @@
  * Per-kind scenario parameters (validated) and per-session randomisation.
  * This schema + "roll" function is the only scenario-specific code: scenario text lives in the DB.
  */
+import type { JobDetails } from '@speakai/contracts';
 import { z } from 'zod';
 
 export type Rng = () => number;
@@ -53,6 +54,11 @@ const NegotiationParams = z.object({
 const RoleplayParams = z.object({
   opening: z.string().min(5),
   hidden: z.array(z.string()).default([]),
+  /**
+   * When the user brings their own job: fields to override, as templates over {{role}}, {{company}}
+   * and {{about}}. The first template whose values the user gave is used.
+   */
+  fromJob: z.record(z.string(), z.union([z.string(), z.array(z.string())])).optional(),
   variants: z.array(z.record(z.string(), z.union([z.string(), z.number()]))).min(1),
 });
 
@@ -67,12 +73,30 @@ export interface RolledState {
   hidden: readonly string[];
 }
 
+/** Whether the user can practise with their own job instead of a random one: a job they're applying for, or their current one. */
+export function ownJobMode(kind: string, params: unknown): 'applying' | 'current' | null {
+  if (kind === 'interview') return 'applying';
+  return kind === 'roleplay' && RoleplayParams.safeParse(params).data?.fromJob !== undefined ? 'current' : null;
+}
+
+/** One line of user-written text, safe to place inside the AI's instructions. */
+const oneLine = (text: string | undefined) => (text ?? '').replace(/[{}"]/g, '').replace(/\s+/g, ' ').trim();
+
+/** The user's job as state values (`ownJob*`), which also add the "own job" layer to the instructions. */
+function jobValues(job: JobDetails): Record<string, string> {
+  const values: Record<string, string> = { ownJobRole: oneLine(job.role) };
+  if (oneLine(job.company)) values.ownJobCompany = oneLine(job.company);
+  if (oneLine(job.about)) values.ownJobAbout = oneLine(job.about);
+  return values;
+}
+
 export function rollScenarioState(
   kind: string,
   params: unknown,
   rng: Rng,
-  opts: { avoidSituations?: readonly string[] } = {},
+  opts: { avoidSituations?: readonly string[]; job?: JobDetails } = {},
 ): RolledState {
+  const job = opts.job && ownJobMode(kind, params) ? jobValues(opts.job) : null;
   switch (kind as ScenarioKind) {
     case 'casual': {
       const p = CasualParams.parse(params);
@@ -81,7 +105,17 @@ export function rollScenarioState(
     }
     case 'interview': {
       const r = pick(InterviewParams.parse(params).roles, rng);
-      return { values: { ...r }, hidden: ['focus'] };
+      if (!job) return { values: { ...r }, hidden: ['focus'] };
+      return {
+        values: {
+          role: job.ownJobRole!,
+          company: job.ownJobCompany ?? 'a company hiring for this role',
+          companyNote: job.ownJobCompany ? 'the company the user chose' : 'invent realistic details for an Indian company in this field',
+          focus: 'a realistic challenge someone in this role faces',
+          ...job,
+        },
+        hidden: ['focus'],
+      };
     }
     case 'client': {
       const pr = pick(ClientParams.parse(params).projects, rng);
@@ -110,7 +144,16 @@ export function rollScenarioState(
     }
     case 'roleplay': {
       const p = RoleplayParams.parse(params);
-      const v = pick(p.variants, rng);
+      let v = pick(p.variants, rng);
+      if (job && p.fromJob) {
+        const given = { role: job.ownJobRole, company: job.ownJobCompany, about: job.ownJobAbout };
+        const fits = (t: string) => [...t.matchAll(/\{\{(\w+)\}\}/g)].every((m) => given[m[1] as keyof typeof given]);
+        const overrides = Object.entries(p.fromJob).flatMap(([key, options]) => {
+          const t = [options].flat().find(fits);
+          return t === undefined ? [] : [[key, renderTemplate(t, given as Record<string, string>)]];
+        });
+        v = { ...v, ...Object.fromEntries(overrides), ...job };
+      }
       return { values: { ...v, opening: renderTemplate(p.opening, v) }, hidden: [...p.hidden, 'opening'] };
     }
     default:

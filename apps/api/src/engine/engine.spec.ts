@@ -170,6 +170,41 @@ describe('missions in the engine', () => {
   });
 });
 
+describe('practising with your own job', () => {
+  const job = { role: 'Frontend Developer', company: 'Zerodha', about: 'Three years of React; I "led" the {{secret}} dashboard rebuild.' };
+
+  it('interviews for the user\'s role instead of a random one, and briefs the AI on their background', () => {
+    const prepared = prepareConversation({ ...base, scenario: scenario('job-interview'), job, rng: () => 0 });
+    expect(prepared.brief.briefing).toBe('A first-round interview for the Frontend Developer role at Zerodha. The interviewer will ask about you and your experience.');
+    expect(prepared.instructions).not.toContain('Finlytics');
+    expect(prepared.instructions).toContain('Their role: Frontend Developer.');
+    // User text is one line, without quotes or template braces.
+    expect(prepared.instructions).toContain('"Three years of React; I led the secret dashboard rebuild."');
+  });
+
+  it('works with only a role', () => {
+    const prepared = prepareConversation({ ...base, scenario: scenario('job-interview'), job: { role: 'Nurse' }, rng: () => 0 });
+    expect(prepared.brief.briefing).toContain('for the Nurse role at a company hiring for this role');
+    expect(prepared.instructions).not.toContain('Company:');
+  });
+
+  it('is ignored by scenarios that don\'t use a job, and absent by default', () => {
+    expect(prepareConversation({ ...base, scenario: scenario('bargaining'), job, rng: () => 0 }).instructions).not.toContain('Frontend Developer');
+    expect(prepareConversation({ ...base, scenario: scenario('job-interview'), rng: () => 0 }).instructions).not.toContain('Their role:');
+  });
+
+  it('sets the raise review at the user\'s company, keeping the secret numbers', async () => {
+    const { MISSIONS } = await import('@speakai/db/content');
+    const raise = MISSIONS.find((m) => m.slug === 'mission-negotiate-raise')!;
+    const run = (j: typeof job | { role: string }) =>
+      prepareConversation({ ...base, scenario: { id: 's', version: 1, ...raise }, missionLevel: 1, job: j, rng: () => 0 });
+    const prepared = run(job);
+    expect(prepared.brief.briefing).toBe('Your annual review at Zerodha. Your manager is about to offer you a 7% raise. You think you deserve 15% — this year you did strong work as Frontend Developer.');
+    expect(prepared.hiddenKeys).toEqual(['ceiling', 'opening']);
+    expect(run({ role: 'Accountant' }).brief.briefing).toContain('Your annual review at your company.');
+  });
+});
+
 describe('replays in the engine', () => {
   it('reuses the original situation, asks the given question, and allows ending after one answer', () => {
     const bargaining = SCENARIOS.find((x) => x.slug === 'bargaining')!;

@@ -8,7 +8,9 @@ import {
   CreateConversationRequest,
   type CreateConversationResponse,
   LiveCompleteRequest,
+  LiveAudioRequest,
   LiveProgressRequest,
+  RecordingToggleRequest,
   LiveTokenRequest,
   type LiveTokenResponse,
   LiveToolRequest,
@@ -25,7 +27,6 @@ import { RephraseService } from '../analysis/rephrase.service.js';
 import { ConversationsService, isUuid } from './conversations.service.js';
 import { QuotaService } from './quota.service.js';
 
-const RecordingToggle = z.object({ on: z.boolean() });
 
 const ListQuery = z.object({
   cursor: z.string().uuid().optional(),
@@ -142,6 +143,13 @@ export class ConversationsController {
     return this.conversations.liveComplete(user.id, id, parseBody(LiveCompleteRequest, body));
   }
 
+  /** Direct calls: recorded audio, while the user has recording on. */
+  @Post('conversations/:id/live-audio')
+  @HttpCode(204)
+  liveAudio(@CurrentUser() user: SessionUser, @Param('id') id: string, @Body() body: unknown): Promise<void> {
+    return this.conversations.liveAudio(user.id, id, parseBody(LiveAudioRequest, body));
+  }
+
   /** The phone's media is up: the AI opens the conversation. */
   @Post('conversations/:id/ready')
   @HttpCode(204)
@@ -181,7 +189,7 @@ export class ConversationsController {
   @Post('conversations/:id/recording')
   @HttpCode(200)
   record(@CurrentUser() user: SessionUser, @Param('id') id: string, @Body() body: unknown): Promise<{ recording: boolean }> {
-    return this.conversations.setRecording(user.id, id, parseBody(RecordingToggle, body).on);
+    return this.conversations.setRecording(user.id, id, parseBody(RecordingToggleRequest, body));
   }
 
   /** Streams the owner's recording (Ogg Opus) with HTTP Range support, so players can seek. */

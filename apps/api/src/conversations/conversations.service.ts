@@ -16,7 +16,9 @@ import {
   type ConversationList,
   type CreateConversationRequest,
   type CreateConversationResponse,
+  type LiveAudioRequest,
   type LiveCompleteRequest,
+  type RecordingToggleRequest,
   type LiveTokenRequest,
   type LiveTokenResponse,
   type LiveToolRequest,
@@ -90,6 +92,8 @@ interface Direct {
   /** Last request from the phone; a call that goes quiet is closed by the sweeper. */
   lastSeen: number;
   turns: TranscriptTurn[];
+  /** Created the first time the user taps "Record"; fed with audio the phone uploads. */
+  recorder: Promise<CallRecorder> | null;
 }
 
 /** No word from the phone for this long: the app was killed or lost the network for good. */
@@ -110,6 +114,8 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
   private readonly pending = new Map<string, Pending>();
   private readonly running = new Map<string, Running>();
   private readonly direct = new Map<string, Direct>();
+  /** Direct calls that ended and whose recording file is still being finalised. */
+  private readonly finishingRecordings = new Set<string>();
   private sweeper: NodeJS.Timeout | null = null;
   /** Serialises DB writes per session (periodic flushes vs. the final write). */
   private readonly writeChains = new Map<string, Promise<void>>();
@@ -191,6 +197,7 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
       learnerWeakSpots: await this.profiles.weakSpots(userId),
       timeZone: user.profile?.timezone ?? 'Asia/Kolkata',
       recentSituations: version.kind === 'casual' ? await this.recentSituations(userId) : [],
+      job: req.job,
     });
 
     const session = await this.prisma.conversationSession.create({
@@ -381,13 +388,7 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
           this.running.delete(id);
         }),
       onError: (m) => this.logger.warn(m),
-      createRecorder: async () => {
-        const key = recordingKey(userId, id);
-        const out = await this.recordings.openWrite(key);
-        // Record the key immediately, so a crash mid-call still leaves a findable (partial) file.
-        await this.prisma.conversationSession.update({ where: { id }, data: { recordingKey: key } });
-        return new CallRecorder(out);
-      },
+      createRecorder: () => this.createRecorder(userId, id),
     });
     this.running.set(id, run);
     await this.prisma.conversationSession.update({ where: { id }, data: { status: 'CONNECTING', plannedDurationSec: durationSec } });
@@ -417,6 +418,7 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
         readyAt: null,
         lastSeen: Date.now(),
         turns: [],
+        recorder: null,
       };
     }
     const apiKey = this.env.GEMINI_API_KEY;
@@ -539,29 +541,62 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
   }
 
   /** Starts or pauses recording the live call. Requires the privacy notice that covers recordings. */
-  async setRecording(userId: string, id: string, on: boolean): Promise<{ recording: boolean }> {
+  async setRecording(userId: string, id: string, req: RecordingToggleRequest): Promise<{ recording: boolean }> {
     await this.owned(userId, id);
     const run = this.running.get(id);
-    if (this.direct.has(id)) throw problem(HttpStatus.CONFLICT, 'RECORDING_UNAVAILABLE', 'Recording isn’t available for this call yet');
-    if (!run || run.userId !== userId || run.convo.isEnded) {
-      throw problem(HttpStatus.CONFLICT, 'CONVERSATION_NOT_LIVE', 'You can only record a call that is in progress');
-    }
-    if (on) {
+    const call = this.direct.get(id);
+    const live = call ? call.userId === userId : Boolean(run && run.userId === userId && !run.convo.isEnded);
+    if (!live) throw problem(HttpStatus.CONFLICT, 'CONVERSATION_NOT_LIVE', 'You can only record a call that is in progress');
+    if (req.on) {
       const profile = await this.prisma.profile.findUnique({ where: { userId }, select: { consentVersion: true } });
       if (profile?.consentVersion !== CONSENT_VERSION) {
         throw problem(HttpStatus.FORBIDDEN, 'CONSENT_REQUIRED', 'Please accept the updated privacy notice to record calls');
       }
     }
-    return { recording: await run.convo.setRecording(on) };
+    if (!call) return { recording: await run!.convo.setRecording(req.on) };
+
+    call.lastSeen = Date.now();
+    if (req.on) {
+      call.recorder ??= this.createRecorder(userId, id);
+      (await call.recorder).resume(req.atMs ?? 0);
+    } else if (call.recorder) {
+      (await call.recorder).pause();
+    }
+    return { recording: call.recorder ? (await call.recorder).recording : false };
+  }
+
+  /** Direct calls: audio the phone uploads while recording is on. */
+  async liveAudio(userId: string, id: string, req: LiveAudioRequest): Promise<void> {
+    const call = this.directCall(userId, id);
+    if (!call.recorder) throw problem(HttpStatus.CONFLICT, 'RECORDING_NOT_STARTED', 'Recording is not on');
+    const recorder = await call.recorder;
+    for (const chunk of req.chunks) {
+      const pcm = Buffer.from(chunk.data, 'base64');
+      if (chunk.speaker === 'USER') recorder.addUser(pcm, chunk.atMs);
+      else recorder.addAi(pcm, chunk.atMs);
+    }
+    recorder.tick(req.untilMs);
+  }
+
+  private async createRecorder(userId: string, id: string): Promise<CallRecorder> {
+    const key = recordingKey(userId, id);
+    const out = await this.recordings.openWrite(key);
+    // Record the key immediately, so a crash mid-call still leaves a findable (partial) file.
+    await this.prisma.conversationSession.update({ where: { id }, data: { recordingKey: key } });
+    return new CallRecorder(out);
   }
 
   /** Where the finished recording is, for streaming. 404 if none, 409 while the call is still live. */
   async recordingFile(userId: string, id: string): Promise<{ key: string; size: number }> {
     const session = await this.owned(userId, id);
-    if (this.running.get(id)) throw problem(HttpStatus.CONFLICT, 'RECORDING_IN_PROGRESS', 'The call is still in progress');
+    if (this.recordingBusy(id)) throw problem(HttpStatus.CONFLICT, 'RECORDING_IN_PROGRESS', 'The call is still in progress');
     const size = session.recordingKey ? await this.recordings.size(session.recordingKey) : null;
     if (!session.recordingKey || !size) throw problem(HttpStatus.NOT_FOUND, 'RECORDING_NOT_FOUND', 'This conversation has no recording');
     return { key: session.recordingKey, size };
+  }
+
+  private recordingBusy(id: string): boolean {
+    return Boolean(this.running.get(id)) || this.direct.has(id) || this.finishingRecordings.has(id);
   }
 
   openRecording(key: string, range?: { start: number; end: number }) {
@@ -570,7 +605,7 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
 
   async deleteRecording(userId: string, id: string): Promise<void> {
     const session = await this.owned(userId, id);
-    if (this.running.get(id)) throw problem(HttpStatus.CONFLICT, 'RECORDING_IN_PROGRESS', 'End the call before deleting its recording');
+    if (this.recordingBusy(id)) throw problem(HttpStatus.CONFLICT, 'RECORDING_IN_PROGRESS', 'End the call before deleting its recording');
     if (session.recordingKey) await this.recordings.remove(session.recordingKey);
     await this.prisma.conversationSession.update({
       where: { id },
@@ -668,11 +703,12 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
       accent: Accent.catch('INDIAN').parse(s.accent),
       analysisStatus: AnalysisStatusSchema.parse(s.analysisStatus),
       feedback: s.analysis ? toFeedback(s.analysis) : null,
-      recording: live?.recording.started
-        ? { inProgress: true, durationMs: null, bytes: null }
-        : s.recordingKey
-          ? { inProgress: false, durationMs: s.recordingDurationMs, bytes: s.recordingBytes }
-          : null,
+      recording:
+        live?.recording.started || call?.recorder || this.finishingRecordings.has(id)
+          ? { inProgress: true, durationMs: null, bytes: null }
+          : s.recordingKey
+            ? { inProgress: false, durationMs: s.recordingDurationMs, bytes: s.recordingBytes }
+            : null,
       brief: {
         title: s.scenarioVersion.title,
         briefing: render(s.scenarioVersion.briefing),
@@ -830,8 +866,21 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
       recording: { active: false, started: false, result: null },
     };
     const values = { ...call.values };
+    const recorder = call.recorder;
+    if (recorder) this.finishingRecordings.add(id);
     this.enqueue(id, () => this.persistEvent(id, 'ENDED', durationMs, { reason: endReason, direct: true }));
-    this.enqueue(id, () => this.persistFinal(id, call.userId, snap, values));
+    this.enqueue(id, async () => {
+      if (recorder) {
+        try {
+          snap.recording = { active: false, started: true, result: await (await recorder).finish() };
+        } catch (err) {
+          this.logger.warn(`recording finalise failed for ${id}: ${(err as Error).message}`);
+        } finally {
+          this.finishingRecordings.delete(id);
+        }
+      }
+      await this.persistFinal(id, call.userId, snap, values);
+    });
   }
 
   /** Closes direct calls whose phone went silent, never connected, or ran far past their time. */

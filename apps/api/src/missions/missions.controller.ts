@@ -4,6 +4,7 @@ import type { PrismaClient } from '@speakai/db';
 import { z } from 'zod';
 import { CurrentUser, type SessionUser } from '../auth/auth.decorators.js';
 import { PRISMA } from '../db/prisma.module.js';
+import { ownJobMode } from '../engine/scenario-kinds.js';
 import { MissionSpec, objectivesOf } from './mission-rules.js';
 
 const Scores = z.record(z.string(), z.number().int());
@@ -38,6 +39,7 @@ export class MissionsController {
             tagline: v.tagline,
             minLevel: EnglishLevel.parse(v.minLevel),
             estimatedMinutes: v.estimatedMinutes,
+            ownJob: ownJobMode(v.kind, v.params),
             aiCharacter: spec.data.aiCharacter,
             objectives: objectivesOf(v.goals).map((o) => o.text),
             skills: spec.data.skills,

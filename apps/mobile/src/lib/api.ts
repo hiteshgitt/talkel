@@ -6,6 +6,7 @@ import {
   ConversationList,
   type CreateConversationRequest,
   CreateConversationResponse,
+  type LiveAudioRequest,
   type LiveCompleteRequest,
   type LiveTokenRequest,
   LiveTokenResponse,
@@ -123,7 +124,8 @@ export const api = {
   liveComplete: (id: string, body: LiveCompleteRequest) => request(`${conv(id)}/live-complete`, { method: 'POST', body }, ConversationDetail),
 
   acceptConsent: (consentVersion: string) => request('/me/consent', { method: 'POST', body: { consentVersion } }, Me),
-  setRecording: (id: string, on: boolean) => request(`${conv(id)}/recording`, { method: 'POST', body: { on } }, RecordingToggle),
+  setRecording: (id: string, on: boolean, atMs?: number) => request(`${conv(id)}/recording`, { method: 'POST', body: { on, atMs } }, RecordingToggle),
+  liveAudio: (id: string, body: LiveAudioRequest) => request(`${conv(id)}/live-audio`, { method: 'POST', body }, null),
   deleteRecording: (id: string) => request(`${conv(id)}/recording`, { method: 'DELETE' }, null),
   retryFeedback: (id: string) => request(`${conv(id)}/feedback/retry`, { method: 'POST' }, null),
   /** Streamed by the audio player with the session cookie as a header. */

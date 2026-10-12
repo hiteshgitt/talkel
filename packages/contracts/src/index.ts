@@ -170,6 +170,11 @@ export const ScenarioSummary = z.object({
   tagline: z.string(),
   minLevel: EnglishLevel,
   estimatedMinutes: z.number().int(),
+  /**
+   * The user may practise with their own job (`JobDetails`) instead of a random one: one they are
+   * `applying` for (interviews) or their `current` job (e.g. a salary review). Null: not job-based.
+   */
+  ownJob: z.enum(['applying', 'current']).nullable().default(null),
 });
 export type ScenarioSummary = z.infer<typeof ScenarioSummary>;
 
@@ -210,6 +215,11 @@ export const MissionSummary = z.object({
   tagline: z.string(),
   minLevel: EnglishLevel,
   estimatedMinutes: z.number().int(),
+  /**
+   * The user may practise with their own job (`JobDetails`) instead of a random one: one they are
+   * `applying` for (interviews) or their `current` job (e.g. a salary review). Null: not job-based.
+   */
+  ownJob: z.enum(['applying', 'current']).nullable().default(null),
   aiCharacter: z.string(),
   /** What the user must achieve (user-facing wording). */
   objectives: z.array(z.string()),
@@ -256,6 +266,19 @@ export const Quota = z.object({
 });
 export type Quota = z.infer<typeof Quota>;
 
+/**
+ * The user's own job, for scenarios that can use it (interviews, a salary review) instead of a random
+ * one. Free text from the user: it is length-limited and given to the AI as information only.
+ */
+export const JobDetails = z.object({
+  /** The role they are applying for, or their current job title. */
+  role: z.string().trim().min(2).max(80),
+  company: z.string().trim().max(80).optional(),
+  /** Experience, skills or recent achievements, in their own words. */
+  about: z.string().trim().max(400).optional(),
+});
+export type JobDetails = z.infer<typeof JobDetails>;
+
 export const CreateConversationRequest = z.object({
   scenarioId: z.string().uuid(),
   /** A specific partner (Pro). Otherwise one is picked at random, filtered by `voice`. */
@@ -268,6 +291,8 @@ export const CreateConversationRequest = z.object({
   liveCorrection: z.boolean().optional(),
   /** Missions only: the pressure level to play (must be unlocked; defaults to the highest unlocked). */
   missionLevel: MissionLevel.optional(),
+  /** Only where the scenario has `ownJob`; otherwise the job is picked at random. */
+  job: JobDetails.optional(),
 });
 export type CreateConversationRequest = z.infer<typeof CreateConversationRequest>;
 
@@ -420,6 +445,23 @@ export const LiveCompleteRequest = z.object({
     .optional(),
 });
 export type LiveCompleteRequest = z.infer<typeof LiveCompleteRequest>;
+
+/** Start/stop recording. Direct calls also say when, on the phone's call clock (the audio uses the same clock). */
+export const RecordingToggleRequest = z.object({ on: z.boolean(), atMs: z.number().int().nonnegative().optional() });
+export type RecordingToggleRequest = z.infer<typeof RecordingToggleRequest>;
+
+/**
+ * While a direct call is being recorded, the phone uploads what was said and played (raw PCM16 mono,
+ * base64: the user's mic at 16 kHz, the AI at 24 kHz), placed on the phone's call clock.
+ */
+export const LiveAudioRequest = z.object({
+  chunks: z
+    .array(z.object({ speaker: z.enum(['USER', 'AI']), atMs: z.number().int().nonnegative(), data: z.string().max(200_000) }))
+    .max(400),
+  /** Everything up to here has been sent, so the server can finalise that part of the file. */
+  untilMs: z.number().int().nonnegative(),
+});
+export type LiveAudioRequest = z.infer<typeof LiveAudioRequest>;
 
 // ───────────── Conversation detail ─────────────
 

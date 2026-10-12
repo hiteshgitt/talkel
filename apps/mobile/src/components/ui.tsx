@@ -144,10 +144,11 @@ export function Button(props: {
 }
 
 export function Field(props: TextInputProps & { label: string; icon?: IconName }) {
-  const { label, style, icon, ...input } = props;
+  const { label, style, icon, secureTextEntry, ...input } = props;
   const s = useStyles();
   const c = useColors();
   const [focused, setFocused] = useState(false);
+  const [revealed, setRevealed] = useState(false);
   return (
     <View style={s.field}>
       <Text style={s.fieldLabel}>{label}</Text>
@@ -166,7 +167,18 @@ export function Field(props: TextInputProps & { label: string; icon?: IconName }
             input.onBlur?.(e);
           }}
           {...input}
+          secureTextEntry={secureTextEntry && !revealed}
         />
+        {secureTextEntry ? (
+          <Pressable
+            onPress={() => setRevealed((r) => !r)}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel={revealed ? 'Hide password' : 'Show password'}
+          >
+            <Ionicons name={revealed ? 'eye-off-outline' : 'eye-outline'} size={20} color={c.textFaint} />
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );

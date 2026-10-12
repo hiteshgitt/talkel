@@ -270,6 +270,26 @@ describe('a direct call (phone ⇄ Gemini Live with a token)', () => {
     expect((await post(`/conversations/${created.id}/live-progress`, carol, { turns: turns.slice(0, 1) })).status).toBe(204);
     expect(((await (await get(`/conversations/${created.id}`, carol)).json()) as ConversationDetail).turns).toHaveLength(1);
 
+    // Recording: the phone uploads both voices (call clock) and the server builds the file.
+    expect((await post('/me/consent', carol, { consentVersion: CONSENT_VERSION })).status).toBe(200);
+    expect((await post(`/conversations/${created.id}/live-audio`, carol, { chunks: [], untilMs: 0 })).status).toBe(409); // not recording yet
+    expect(await (await post(`/conversations/${created.id}/recording`, carol, { on: true, atMs: 1_000 })).json()).toEqual({ recording: true });
+    const tone = (rate: number, ms: number) => {
+      const pcm = Buffer.alloc((rate * ms) / 1000 * 2);
+      for (let i = 0; i < pcm.length / 2; i++) pcm.writeInt16LE(Math.round(8000 * Math.sin((i * 2 * Math.PI * 440) / rate)), i * 2);
+      return pcm.toString('base64');
+    };
+    const audio = await post(`/conversations/${created.id}/live-audio`, carol, {
+      chunks: [
+        { speaker: 'AI', atMs: 1_000, data: tone(24_000, 1_000) },
+        { speaker: 'USER', atMs: 2_200, data: tone(16_000, 800) },
+      ],
+      untilMs: 3_000,
+    });
+    expect(audio.status).toBe(204);
+    expect(((await (await get(`/conversations/${created.id}`, carol)).json()) as ConversationDetail).recording).toMatchObject({ inProgress: true });
+    expect((await get(`/conversations/${created.id}/recording`, carol)).status).toBe(409); // still live
+
     // The phone claims a 10-minute call: billed time is capped by the server's own clock.
     const done = await post(`/conversations/${created.id}/live-complete`, carol, {
       endReason: 'USER_ENDED',
@@ -282,6 +302,10 @@ describe('a direct call (phone ⇄ Gemini Live with a token)', () => {
     expect(ended).toMatchObject({ status: 'ENDED', endReason: 'USER_ENDED' });
     expect(ended.turns.map((t) => t.speaker)).toEqual(['AI', 'USER']);
     expect(ended.durationMs!).toBeLessThan(30_000);
+    expect(ended.recording).toMatchObject({ inProgress: false });
+    expect(ended.recording!.durationMs).toBeGreaterThanOrEqual(1_900);
+    const file = Buffer.from(await (await get(`/conversations/${created.id}/recording`, carol)).arrayBuffer());
+    expect(file.subarray(0, 4).toString()).toBe('OggS');
     expect((await post(`/conversations/${created.id}/live-tool`, carol, { name: 'end_conversation', args: {} })).status).toBe(409);
 
     const [row] = await sql<{ offer: string; floor: string; events: string; speaking: number }>(
@@ -326,7 +350,8 @@ describe('partner & accent by plan', () => {
 describe('recordings', () => {
   it('can be deleted by the owner, and go with the conversation', async () => {
     const [row] = await sql<{ id: string }>(
-      `SELECT id FROM conversation_sessions WHERE "recordingKey" IS NOT NULL ORDER BY "createdAt" DESC LIMIT 1`,
+      `SELECT s.id FROM conversation_sessions s JOIN users u ON u.id = s."userId"
+       WHERE s."recordingKey" IS NOT NULL AND u.email = 'alice.conv@example.com' ORDER BY s."createdAt" DESC LIMIT 1`,
     );
     expect((await fetch(`${api.base}/conversations/${row!.id}/recording`, { method: 'DELETE', headers: { Cookie: bob } })).status).toBe(404);
     expect((await fetch(`${api.base}/conversations/${row!.id}/recording`, { method: 'DELETE', headers: { Cookie: alice } })).status).toBe(204);

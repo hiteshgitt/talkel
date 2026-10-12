@@ -3,7 +3,7 @@
  * everything a live call needs. Pure (no I/O) and deterministic for a given rng/clock.
  */
 import { createHash } from 'node:crypto';
-import type { Accent, EnglishLevel, LearningGoal } from '@speakai/contracts';
+import type { Accent, EnglishLevel, JobDetails, LearningGoal } from '@speakai/contracts';
 import { z } from 'zod';
 import {
   ACCENT,
@@ -14,6 +14,7 @@ import {
   LIVE_CORRECTION,
   memoryLayer,
   NO_CORRECTION,
+  ownJobLayer,
   PRESSURE,
   REPLAY,
   styleReminderCue,
@@ -65,6 +66,8 @@ export interface PrepareInput {
   rng?: Rng;
   /** Casual situations used recently by this user, to avoid repeats. */
   recentSituations?: readonly string[];
+  /** The user's own job, where the scenario accepts one; otherwise a random one is rolled. */
+  job?: JobDetails;
   /** Replays: reuse the original conversation's situation instead of rolling a new one… */
   fixedState?: { values: Record<string, string | number>; hidden: readonly string[] };
   /** …and ask this question (the AI's line before the replayed answer). */
@@ -97,7 +100,8 @@ export function prepareConversation(input: PrepareInput): PreparedConversation {
   const rng = input.rng ?? Math.random;
   const now = input.now ?? new Date();
   const kind = input.scenario.kind as ScenarioKind;
-  const rolled = input.fixedState ?? rollScenarioState(kind, input.scenario.params, rng, { avoidSituations: input.recentSituations });
+  const rolled = input.fixedState ?? rollScenarioState(kind, input.scenario.params, rng, { avoidSituations: input.recentSituations, job: input.job });
+  const ownJob = ownJobLayer(rolled.values);
   const replay = input.replayQuestion !== undefined;
   const goals = Goals.parse(input.scenario.goals);
   const render = (t: string) => renderTemplate(t, rolled.values);
@@ -108,6 +112,7 @@ export function prepareConversation(input: PrepareInput): PreparedConversation {
     input.liveCorrection ? LIVE_CORRECTION : NO_CORRECTION,
     SAFETY,
     render(input.scenario.promptTemplate),
+    ownJob,
     input.persona.promptFragment,
     ACCENT[input.accent],
     DIFFICULTY[input.difficulty],

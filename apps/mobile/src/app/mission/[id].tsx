@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { IconBadge, ScenarioBanner } from '@/components/art';
+import { JobPicker, useJobChoice } from '@/components/job-picker';
 import { Badge, Body, Button, Card, ErrorText, Loading, Screen } from '@/components/ui';
 import { friendlyError } from '@/lib/api';
 import { configProblem } from '@/lib/config';
@@ -23,6 +24,7 @@ export default function MissionScreen() {
   const start = useStartMission();
   const m = missions.data?.missions.find((x) => x.id === id);
   const [chosen, setChosen] = useState<number | null>(null);
+  const jobChoice = useJobChoice();
 
   if (missions.isPending) return <Loading />;
   if (!m) {
@@ -80,6 +82,13 @@ export default function MissionScreen() {
           <Badge label={`~${formatMinutes(m.estimatedMinutes * 60)}`} icon="time-outline" />
         </View>
 
+        {m.ownJob ? (
+          <>
+            <Text style={s.section}>Which job?</Text>
+            <JobPicker choice={jobChoice.choice} update={jobChoice.update} kind={m.ownJob} />
+          </>
+        ) : null}
+
         <Text style={s.section}>Choose your level</Text>
         {MISSION_LEVELS.map(({ level: l, name }) => {
           const locked = l > p.unlockedLevel;
@@ -110,14 +119,15 @@ export default function MissionScreen() {
 
         <ErrorText>{problem ?? (outOfTime ? 'You’ve used today’s free practice time. It resets at midnight.' : null)}</ErrorText>
         <ErrorText>{start.error ? friendlyError(start.error) : null}</ErrorText>
+        {m.ownJob && jobChoice.incomplete ? <Body muted>Add your job title, or choose “Surprise me”.</Body> : null}
       </ScrollView>
       <View style={s.footer}>
         <Button
           label={`Start level ${level}`}
           icon="flag"
-          onPress={() => start.mutate({ missionId: m.id, level })}
+          onPress={() => start.mutate({ missionId: m.id, level, job: m.ownJob ? jobChoice.job : undefined })}
           loading={start.isPending}
-          disabled={Boolean(problem) || outOfTime}
+          disabled={Boolean(problem) || outOfTime || Boolean(m.ownJob && jobChoice.incomplete)}
         />
       </View>
     </SafeAreaView>

@@ -3,6 +3,7 @@ import { type Catalog, EnglishLevel, VoiceGender } from '@speakai/contracts';
 import type { PrismaClient } from '@speakai/db';
 import { AllowDevToken } from '../auth/auth.decorators.js';
 import { PRISMA } from '../db/prisma.module.js';
+import { ownJobMode } from '../engine/scenario-kinds.js';
 
 /** Active practice scenarios (latest published version) and personas — missions have their own endpoint. Never includes prompts or hidden params. */
 @Controller('catalog')
@@ -31,6 +32,7 @@ export class CatalogController {
           tagline: v.tagline,
           minLevel: EnglishLevel.parse(v.minLevel),
           estimatedMinutes: v.estimatedMinutes,
+          ownJob: ownJobMode(v.kind, v.params),
         };
       }),
       personas: personas.map((p) => ({

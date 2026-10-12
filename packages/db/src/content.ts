@@ -390,6 +390,7 @@ export const MISSIONS: ScenarioSeed[] = [
         'Welcome the user to their annual review in a friendly but businesslike way, say one positive thing about their year, ' +
         'and tell them the company can offer a {{offer}} raise this year. Then ask what they think.',
       hidden: ['ceiling'],
+      fromJob: { company: ['{{company}}', 'your company'], managerTitle: 'Your manager', achievement: 'you did strong work as {{role}}' },
       variants: [
         { company: 'a software company in Bengaluru', managerTitle: 'Your manager, the engineering head', offer: '7%', ceiling: '12%', target: '15%', achievement: 'you led a project that cut customer complaints by 30%' },
         { company: 'a marketing agency in Mumbai', managerTitle: 'Your manager, the agency director', offer: '6%', ceiling: '11%', target: '14%', achievement: 'you brought in two new clients' },

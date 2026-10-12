@@ -1,4 +1,6 @@
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react';
+import type { ButtonHTMLAttributes, ReactNode } from 'react';
+
+export { Field } from './field';
 
 export function AuthShell({ title, subtitle, children }: { title: string; subtitle?: string; children: ReactNode }) {
   return (
@@ -12,18 +14,6 @@ export function AuthShell({ title, subtitle, children }: { title: string; subtit
         {children}
       </div>
     </main>
-  );
-}
-
-export function Field({ label, ...input }: InputHTMLAttributes<HTMLInputElement> & { label: string }) {
-  return (
-    <label className="block space-y-1.5">
-      <span className="text-sm text-muted">{label}</span>
-      <input
-        className="w-full rounded-xl border border-line bg-surface px-3.5 py-3 text-fg outline-none placeholder:text-muted focus:border-accent"
-        {...input}
-      />
-    </label>
   );
 }
 

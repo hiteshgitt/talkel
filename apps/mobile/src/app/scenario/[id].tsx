@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScenarioBanner } from '@/components/art';
+import { JobPicker, useJobChoice } from '@/components/job-picker';
 import { AccentPicker, DurationPicker, LevelPicker, PersonaPicker, Section, VoicePicker } from '@/components/pickers';
 import { Body, Button, Choice, ErrorText, Loading, Screen } from '@/components/ui';
 import { api, friendlyError } from '@/lib/api';
@@ -32,6 +33,7 @@ export default function ScenarioSetupScreen() {
   const [difficulty, setDifficulty] = useState<EnglishLevel | null>(null);
   const [durationSec, setDurationSec] = useState<number | null>(null);
   const [liveCorrection, setLiveCorrection] = useState<boolean | null>(null);
+  const jobChoice = useJobChoice();
 
   const chosenVoice: VoicePreference = canChoosePartner ? (voice ?? preferred) : 'RANDOM';
   const partnerOptions = (catalog.data?.personas ?? []).filter((p) => chosenVoice === 'RANDOM' || p.gender === chosenVoice);
@@ -52,6 +54,7 @@ export default function ScenarioSetupScreen() {
         difficulty: chosenLevel,
         durationSec: chosenDuration,
         liveCorrection: chosenCorrection,
+        ...(scenario?.ownJob && jobChoice.job ? { job: jobChoice.job } : {}),
       }),
     onSuccess: (created) => {
       qc.setQueryData(createdConversationKey(created.id), created);
@@ -81,6 +84,12 @@ export default function ScenarioSetupScreen() {
           <Text style={s.title}>{scenario.title}</Text>
           <Text style={s.tagline}>{scenario.tagline}</Text>
         </ScenarioBanner>
+
+        {scenario.ownJob ? (
+          <Section title="Which job?" icon="briefcase-outline">
+            <JobPicker choice={jobChoice.choice} update={jobChoice.update} kind={scenario.ownJob} />
+          </Section>
+        ) : null}
 
         <Section title="Who you’ll talk to" icon="person-outline">
           <VoicePicker value={chosenVoice} onChange={setVoice} locked={!canChoosePartner} />
@@ -117,9 +126,10 @@ export default function ScenarioSetupScreen() {
 
         <ErrorText>{problem ?? (outOfTime ? 'You’ve used today’s free practice time. It resets at midnight.' : null)}</ErrorText>
         <ErrorText>{create.error ? friendlyError(create.error) : null}</ErrorText>
+        {scenario.ownJob && jobChoice.incomplete ? <Body muted>Add your job title, or choose “Surprise me”.</Body> : null}
       </ScrollView>
       <View style={s.footer}>
-        <Button label="Continue" icon="arrow-forward" onPress={() => create.mutate()} loading={create.isPending} disabled={outOfTime || Boolean(problem)} />
+        <Button label="Continue" icon="arrow-forward" onPress={() => create.mutate()} loading={create.isPending} disabled={outOfTime || Boolean(problem) || Boolean(scenario.ownJob && jobChoice.incomplete)} />
       </View>
     </SafeAreaView>
   );

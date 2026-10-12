@@ -4,6 +4,7 @@ import type InCallManagerType from 'react-native-incall-manager';
 import { TalkelAudio } from '../../modules/talkel-audio/src';
 import { api, friendlyError } from '@/lib/api';
 import { nativeCallingProblem } from '@/lib/runtime';
+import { RecordingUpload } from './recording-upload';
 import { TurnTranscript } from './turn-transcript';
 
 export type CallPhase = 'connecting' | 'active' | 'reconnecting' | 'ending' | 'ended' | 'failed';
@@ -24,7 +25,6 @@ export interface CallState {
   connectedAt: number | null;
   /** Seconds left when the one-minute warning is due. */
   warningSecondsLeft: number | null;
-  /** Call recording isn't available for direct calls yet. */
   canRecord: boolean;
   recording: boolean;
   recordingError: string | null;
@@ -164,6 +164,8 @@ export class RealtimeCall {
   private readonly responseLatenciesMs: number[] = [];
   private lastStyleCueAt = 0;
   private endScheduled = false;
+  private recordingUpload: RecordingUpload | null = null;
+  private recordingToggling = false;
   private readonly usage = { inputAudioTokens: 0, outputAudioTokens: 0, inputTextTokens: 0, outputTextTokens: 0, cachedInputTokens: 0 };
 
   constructor(readonly conversationId: string) {}
@@ -229,8 +231,30 @@ export class RealtimeCall {
     void this.incall.chooseAudioRoute(next).catch(() => undefined);
   }
 
+  /** Starts or stops recording both voices. The phone uploads the audio while recording is on. */
   async toggleRecording(): Promise<void> {
-    this.set({ recordingError: 'Recording isn’t available for calls yet.' });
+    if (this.recordingToggling || this.state.phase !== 'active') return;
+    this.recordingToggling = true;
+    const on = !this.state.recording;
+    const upload = (this.recordingUpload ??= new RecordingUpload(this.conversationId, () => this.elapsed()));
+    try {
+      if (on) upload.start();
+      else await upload.stop();
+      const { recording } = await api.setRecording(this.conversationId, on, this.elapsed());
+      if (recording) upload.confirmed();
+      else upload.discard();
+      this.set({ recording, recordingError: null });
+    } catch (err) {
+      // Still in the state the server last confirmed.
+      if (on) upload.discard();
+      else {
+        upload.start();
+        upload.confirmed();
+      }
+      this.set({ recordingError: friendlyError(err) });
+    } finally {
+      this.recordingToggling = false;
+    }
   }
 
   /** User hangs up. */
@@ -288,7 +312,7 @@ export class RealtimeCall {
       return;
     }
     this.startedAt = Date.now();
-    this.set({ phase: 'active', connectedAt: this.startedAt });
+    this.set({ phase: 'active', connectedAt: this.startedAt, canRecord: true });
     void api.ready(this.conversationId).catch(() => undefined);
     this.cue(this.live!.openingCue, true); // the AI opens the conversation
     this.startTimers();
@@ -308,6 +332,7 @@ export class RealtimeCall {
     old?.close();
     this.setupDone = false;
     TalkelAudio?.clear();
+    this.recordingUpload?.aiCleared();
     const deadline = Date.now() + RECONNECT_WINDOW_MS;
     while (!this.closed && Date.now() < deadline) {
       try {
@@ -332,6 +357,7 @@ export class RealtimeCall {
     if (this.closed || !this.setupDone || this.startedAt === null) return;
     if (!this.state.muted) {
       this.send({ realtimeInput: { audio: { mimeType: 'audio/pcm;rate=16000', data } } });
+      this.recordingUpload?.mic(data, level);
     }
     const edge = this.vad.push(this.state.muted ? 0 : level, 40);
     const now = Date.now();
@@ -369,12 +395,14 @@ export class RealtimeCall {
         if (d?.data && (d.mimeType ?? '').startsWith('audio/pcm')) {
           this.transcript.aiOutput(t);
           TalkelAudio?.play(d.data);
+          this.recordingUpload?.ai(d.data);
         }
       }
       const aiText = clean(sc.outputTranscription?.text);
       if (aiText.trim()) this.transcript.aiText(aiText, t);
       if (sc.interrupted) {
         TalkelAudio?.clear();
+        this.recordingUpload?.aiCleared();
         this.transcript.interrupted();
       }
       if (sc.turnComplete) this.transcript.turnComplete();
@@ -465,6 +493,8 @@ export class RealtimeCall {
     this.userSpeechStartedAt = null;
     this.transcript.finalizeAll();
     this.cleanup();
+    // The rest of the recording goes up before the call is closed (the server then finishes the file).
+    if (this.recordingUpload) await Promise.race([this.recordingUpload.stop(), new Promise((r) => setTimeout(r, 8_000))]);
     try {
       await api.liveComplete(this.conversationId, {
         endReason: reason,

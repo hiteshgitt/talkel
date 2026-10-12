@@ -1,4 +1,4 @@
-import { MISSION_LEVELS, type MissionGroup, type MissionSkill } from '@speakai/contracts';
+import { type JobDetails, MISSION_LEVELS, type MissionGroup, type MissionSkill } from '@speakai/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { api } from './api';
@@ -41,8 +41,8 @@ export const SKILL: Record<MissionSkill, { label: string; icon: IconName }> = {
 export function useStartMission() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ missionId, level }: { missionId: string; level: number }) =>
-      api.createConversation({ scenarioId: missionId, missionLevel: level, voice: 'RANDOM' }),
+    mutationFn: ({ missionId, level, job }: { missionId: string; level: number; job?: JobDetails }) =>
+      api.createConversation({ scenarioId: missionId, missionLevel: level, voice: 'RANDOM', ...(job ? { job } : {}) }),
     onSuccess: (created) => {
       qc.setQueryData(createdConversationKey(created.id), created);
       router.push({ pathname: '/brief/[id]', params: { id: created.id } });
