@@ -2,6 +2,7 @@ import { Link, router } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { BrandMark } from '@/components/art';
+import { LegalLink } from '@/components/privacy-notice';
 import { Button, ErrorText, Field, Screen, Title } from '@/components/ui';
 import { authClient, VERIFIED_CALLBACK_URL } from '@/lib/auth-client';
 import { pendingSignup } from '@/lib/pending-signup';
@@ -49,6 +50,10 @@ export default function SignUpScreen() {
       <Field label={`Password (at least ${MIN_PASSWORD} characters)`} icon="lock-closed-outline" value={password} onChangeText={setPassword} secureTextEntry autoComplete="new-password" textContentType="newPassword" />
       {tooShort ? <ErrorText>Password is too short.</ErrorText> : null}
       <ErrorText>{error}</ErrorText>
+      <Text style={styles.agree}>
+        By creating an account you confirm you’re 18 or older and agree to our <LegalLink path="/terms">terms</LegalLink> and{' '}
+        <LegalLink path="/privacy">privacy policy</LegalLink>.
+      </Text>
       <Button
         label="Create account"
         icon="person-add-outline"
@@ -68,5 +73,6 @@ const useStyles = makeStyles((c) =>
     hero: { gap: 8, marginTop: 20, marginBottom: 8, alignItems: 'center' },
     lead: { color: c.textMuted, fontSize: 16, lineHeight: 23, textAlign: 'center' },
     link: { color: c.accent, fontSize: 16, fontWeight: '700', textAlign: 'center', paddingVertical: 8 },
+    agree: { color: c.textMuted, fontSize: 13, lineHeight: 19, textAlign: 'center' },
   }),
 );

@@ -1,6 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import * as WebBrowser from 'expo-web-browser';
 import { StyleSheet, Text, View } from 'react-native';
 import { Card } from '@/components/ui';
+import { WEB_URL } from '@/lib/config';
 import type { IconName } from '@/lib/visuals';
 import { makeStyles, useColors } from '@/theme';
 
@@ -25,7 +27,20 @@ export function PrivacyNotice() {
           <Text style={s.text}>{p.text}</Text>
         </View>
       ))}
+      <Text style={s.more}>
+        Read the full <LegalLink path="/privacy">privacy policy</LegalLink> and <LegalLink path="/terms">terms of service</LegalLink>.
+      </Text>
     </Card>
+  );
+}
+
+/** Opens one of our legal pages (privacy, terms, account deletion) in the in-app browser. */
+export function LegalLink({ path, children }: { path: '/privacy' | '/terms' | '/delete-account'; children: string }) {
+  const s = useStyles();
+  return (
+    <Text style={s.link} accessibilityRole="link" onPress={() => void WebBrowser.openBrowserAsync(`${WEB_URL}${path}`)}>
+      {children}
+    </Text>
   );
 }
 
@@ -35,5 +50,7 @@ const useStyles = makeStyles((c) =>
     row: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
     icon: { width: 34, height: 34, borderRadius: 17, backgroundColor: c.accentSoft, alignItems: 'center', justifyContent: 'center' },
     text: { color: c.text, fontSize: 15, lineHeight: 22, flex: 1 },
+    more: { color: c.textMuted, fontSize: 14, lineHeight: 20 },
+    link: { color: c.accent, fontWeight: '700' },
   }),
 );

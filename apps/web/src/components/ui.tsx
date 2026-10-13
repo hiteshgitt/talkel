@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
 export { Field } from './field';
@@ -12,6 +13,17 @@ export function AuthShell({ title, subtitle, children }: { title: string; subtit
           {subtitle ? <p className="text-muted">{subtitle}</p> : null}
         </div>
         {children}
+        <nav className="flex justify-center gap-5 pt-4 text-xs text-muted">
+          <Link href="/privacy" className="hover:text-fg">
+            Privacy
+          </Link>
+          <Link href="/terms" className="hover:text-fg">
+            Terms
+          </Link>
+          <Link href="/delete-account" className="hover:text-fg">
+            Delete account
+          </Link>
+        </nav>
       </div>
     </main>
   );

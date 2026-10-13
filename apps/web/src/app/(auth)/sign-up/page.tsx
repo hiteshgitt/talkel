@@ -48,6 +48,17 @@ export default function SignUpPage() {
           onChange={(e) => setPassword(e.target.value)}
         />
         <ErrorText>{error}</ErrorText>
+        <p className="text-center text-xs leading-relaxed text-muted">
+          By creating an account you confirm you’re 18 or older and agree to our{' '}
+          <Link href="/terms" className="text-accent hover:underline">
+            terms
+          </Link>{' '}
+          and{' '}
+          <Link href="/privacy" className="text-accent hover:underline">
+            privacy policy
+          </Link>
+          .
+        </p>
         <Button type="submit" loading={busy}>
           Create account
         </Button>
