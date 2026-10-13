@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Brand } from './brand';
 import type { ReactNode } from 'react';
 
 /** Where "Get early access" goes until the Play Store listing is live. */
@@ -43,9 +44,7 @@ export function Landing() {
   return (
     <div className="flex-1 overflow-x-hidden">
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-5 sm:px-6">
-        <Link href="/" className="text-sm font-bold tracking-widest text-accent">
-          TALKEL
-        </Link>
+        <Brand />
         <nav className="flex items-center gap-5 text-sm">
           <a href="#features" className="hidden text-muted hover:text-fg sm:inline">
             Features
@@ -216,7 +215,10 @@ export function Landing() {
 
       <footer className="border-t border-line">
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-8 text-sm text-muted sm:px-6">
-          <span>© {new Date().getFullYear()} Talkel</span>
+          <span className="flex items-center gap-3">
+            <Brand size={24} />
+            <span>© {new Date().getFullYear()}</span>
+          </span>
           <nav className="flex flex-wrap gap-5">
             <Link href="/privacy" className="hover:text-fg">
               Privacy
@@ -289,7 +291,7 @@ function PhoneCall() {
             <span className="rounded-full bg-danger/15 px-2 py-0.5 font-semibold text-danger">● REC</span>
           </div>
           <div className="mt-10 flex flex-col items-center gap-3">
-            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-accent to-[#a57bff] text-3xl font-bold text-white">P</div>
+            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-[#2b5bff] to-[#18e0e6] text-3xl font-bold text-white">P</div>
             <p className="text-lg font-semibold text-fg">Priya</p>
             <p className="text-sm text-muted">Hiring manager · 03:12</p>
           </div>

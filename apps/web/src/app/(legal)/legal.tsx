@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Brand } from '@/components/brand';
 import type { ReactNode } from 'react';
 
 /** Who runs Talkel and how to reach them; shared by every legal page. */
@@ -19,8 +20,8 @@ const PAGES = [
 export function LegalPage({ title, intro, children }: { title: string; intro: string; children: ReactNode }) {
   return (
     <main className="mx-auto w-full max-w-2xl px-4 py-12 sm:py-16">
-      <p className="text-sm font-bold tracking-widest text-accent">TALKEL</p>
-      <h1 className="mt-2 text-3xl font-bold text-fg sm:text-4xl">{title}</h1>
+      <Brand />
+      <h1 className="mt-8 text-3xl font-bold text-fg sm:text-4xl">{title}</h1>
       <p className="mt-2 text-sm text-muted">Last updated {LEGAL.updated}</p>
       <p className="mt-6 text-lg leading-relaxed text-fg">{intro}</p>
       <div className="mt-10 space-y-10">{children}</div>

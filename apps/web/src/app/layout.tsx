@@ -5,6 +5,8 @@ import './globals.css';
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
 
 export const metadata: Metadata = {
+  // Absolute URLs for link previews (the share image, icons).
+  metadataBase: new URL(process.env.NEXT_PUBLIC_WEB_URL || 'http://localhost:3100'),
   title: 'Talkel — Your AI Conversation Partner',
   description: 'Practise real English conversations with AI, then get friendly feedback.',
 };
