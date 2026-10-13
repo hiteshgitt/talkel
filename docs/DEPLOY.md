@@ -72,8 +72,13 @@ profile env), then `eas build --profile production`.
 - **API:** Render free web service `talkel-api` (`render.yaml`, Docker `deploy/api.Dockerfile`, region Singapore),
   in-process feedback worker on the Postgres queue. Secrets are set in Render, never in the repo.
 - **Database:** Supabase (`DATABASE_URL` = the pooler URL).
+- **Website:** Vercel project `talkel-web` (https://talkel-web.vercel.app), env `API_INTERNAL_URL=https://talkel-api.onrender.com`,
+  `NEXT_PUBLIC_WEB_URL=https://talkel-staging.talkel.workers.dev`. Deploy from a clean export so no local `.env` files are
+  uploaded, and build locally (Vercel's remote build has produced a `/v1` rewrite to 127.0.0.1):
+  `git archive HEAD | tar -x -C <dir>`, add `.vercel/project.json`, then `vercel build --prod` and `vercel deploy --prebuilt --prod`.
+- **Email:** Brevo SMTP on port **2525** (Render's free plan blocks 25/465/587).
 - **Permanent address:** `https://talkel-staging.talkel.workers.dev` — Cloudflare Worker (`deploy/staging-worker/`):
-  `/v1/*` → Render, everything else → the web app. Its cron pings `/v1/health` every 10 minutes so Render's free
+  `/v1/*` → Render, everything else → the website on Vercel. Its cron pings `/v1/health` every 10 minutes so Render's free
   instance never sleeps. Re-point with `deploy/staging-worker/deploy.sh <api-origin> <web-origin>`.
 - **Staging-only settings:** `REQUIRE_EMAIL_VERIFICATION=false`, `TRUST_CLIENT_IP_HEADER=true`, `LIFETIME_PRO_EMAILS`.
 - **App for testers:** `eas build --profile staging --platform android` → an APK with the staging address built in.
