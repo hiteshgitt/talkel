@@ -2,9 +2,6 @@ import Link from 'next/link';
 import { Brand } from './brand';
 import type { ReactNode } from 'react';
 
-/** Where "Get early access" goes until the Play Store listing is live. */
-const EARLY_ACCESS = 'mailto:talkel.app@gmail.com?subject=Talkel%20early%20access&body=Hi%2C%20I%27d%20like%20to%20try%20Talkel%20before%20launch.';
-
 const FEATURES: { title: string; body: string }[] = [
   { title: 'A real phone call', body: 'Talk out loud in real time. Interrupt, pause, think — the AI answers like a person on the line, for 3, 5 or 10 minutes.' },
   { title: 'Practise for your own job', body: 'Type the role you’re applying for and your experience. The interviewer asks what that job really gets asked.' },
@@ -34,7 +31,7 @@ const LEVELS = ['Comfortable', 'Natural', 'Challenging', 'Pressure', 'Real world
 
 const FAQ: { q: string; a: string }[] = [
   { q: 'Is Talkel free?', a: 'Yes — you get 10 free minutes of conversation every day, with full feedback after every call. A Pro plan with more time and extra features is coming.' },
-  { q: 'When can I get it?', a: 'Talkel is launching on Android (Google Play) soon. Ask for early access and we’ll invite you to the test version.' },
+  { q: 'When can I get it?', a: 'Talkel is launching on Google Play soon. You can try the Android test version today from the download page.' },
   { q: 'What level of English do I need?', a: 'Any. Pick Beginner to Expert and the AI adjusts its vocabulary, speed and how hard it pushes back.' },
   { q: 'Is it a chatbot?', a: 'No typing. It’s a voice call: you speak, the AI speaks back in real time, in an Indian, American, British or Australian accent.' },
   { q: 'Do you store my voice?', a: 'No. Your voice is sent to our AI provider only while the call is on. Nothing is recorded unless you tap Record, and you can delete anything at any time.' },
@@ -57,6 +54,9 @@ export function Landing() {
           </a>
           <Link href="/sign-in" className="text-muted hover:text-fg">
             Sign in
+          </Link>
+          <Link href="/download" className="rounded-full bg-accent px-4 py-2 font-semibold text-white hover:brightness-110">
+            Download
           </Link>
         </nav>
       </header>
@@ -205,7 +205,7 @@ export function Landing() {
         <section className="mx-auto w-full max-w-6xl px-4 pb-20 sm:px-6">
           <div className="rounded-3xl bg-raised px-6 py-12 text-center">
             <h2 className="text-3xl font-bold text-fg">Your next interview, rehearsed tonight.</h2>
-            <p className="mx-auto mt-3 max-w-lg text-muted">Be among the first to try Talkel on Android.</p>
+            <p className="mx-auto mt-3 max-w-lg text-muted">Try the Android test version today — free.</p>
             <div className="mt-6 flex justify-center">
               <CtaButton>Get early access</CtaButton>
             </div>
@@ -241,9 +241,9 @@ export function Landing() {
 
 function CtaButton({ children }: { children: ReactNode }) {
   return (
-    <a href={EARLY_ACCESS} className="rounded-full bg-accent px-6 py-3.5 font-semibold text-white transition hover:brightness-110">
+    <Link href="/download" className="rounded-full bg-accent px-6 py-3.5 font-semibold text-white transition hover:brightness-110">
       {children}
-    </a>
+    </Link>
   );
 }
 
