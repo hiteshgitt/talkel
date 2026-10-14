@@ -57,6 +57,10 @@ export default function DownloadPage() {
         <ul className="mt-3 list-disc space-y-2 pl-5 leading-relaxed text-muted marker:text-line">
           <li>This is an early test version: you may find bugs, and features can change.</li>
           <li>
+            Installed a test version before 14 October 2026? This one installs as a separate app — sign in with the same account,
+            then delete the old Talkel.
+          </li>
+          <li>
             When Talkel launches on Google Play, uninstall this version and install it from the Play Store. Your account, conversations
             and progress are saved online, so nothing is lost.
           </li>
