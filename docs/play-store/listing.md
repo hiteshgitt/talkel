@@ -31,6 +31,12 @@ PRACTISE THE MOMENTS THAT MATTER
 • Missions with rising pressure: get the job, negotiate your raise, calm an angry customer, face an angry manager, pitch your idea, pass a visa interview, rebook a cancelled flight
 • Everyday English: friendly chats, making a new friend, bargaining like a local, fixing a hotel problem, client meetings and debates
 
+YOUR OWN TOPICS
+• Describe the exact conversation you have coming up — in English, Hindi or Hinglish
+• Talkel turns it into a practice call: your manager, landlord, a client or a new friend
+• Choose how they behave: friendly, realistic or tough
+• Practise it again and again until you feel ready
+
 FEEDBACK YOU CAN USE — IN ENGLISH OR HINDI
 • After every call, see what went well and what to improve
 • Grammar mistakes explained, with the better way to say it
@@ -45,7 +51,7 @@ WATCH YOURSELF IMPROVE
 • Talkel remembers details you share, so conversations feel personal (you can view and delete them any time)
 
 FREE TO START
-Practise for 10 minutes every day, free.
+Practise for 10 minutes every day, and create your first custom topic, free.
 
 PRIVATE BY DESIGN
 Your conversations are yours. Delete any conversation, recording or memory — or your whole account — at any time, from the app.
