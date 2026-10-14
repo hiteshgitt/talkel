@@ -19,7 +19,14 @@
       }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://talkel-staging.talkel.workers.dev/v1",
+        "EXPO_PUBLIC_WEB_URL": "https://talkel-staging.talkel.workers.dev"
+      }
     },
     "staging": {
       "distribution": "internal",
