@@ -79,6 +79,7 @@ function AppNavigator() {
       <Stack.Protected guard={consentOk}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="scenario/[id]" />
+        <Stack.Screen name="topic/edit" />
         <Stack.Screen name="brief/[id]" />
         <Stack.Screen name="call" options={{ gestureEnabled: false, animation: 'fade' }} />
         <Stack.Screen name="conversation/[id]" />

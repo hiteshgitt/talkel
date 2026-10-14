@@ -39,7 +39,8 @@ export default function PrivacyPage() {
             </>,
             <>
               <strong>Conversation content:</strong> the text transcript of each conversation, the scenario you practised, any job
-              details you chose to enter (for example your job title or experience), and the feedback, scores, mistakes and
+              details you chose to enter (for example your job title or experience), custom topics you create (the situation you
+              describe and the practice scenario built from it), and the feedback, scores, mistakes and
               suggestions we generate from it.
             </>,
             <>
@@ -82,8 +83,8 @@ export default function PrivacyPage() {
         <List
           items={[
             <>
-              <strong>Google (Gemini API)</strong> — receives your voice during calls and conversation transcripts, to generate the AI
-              partner’s replies and your feedback. Google processes this under its Gemini API terms. Depending on the service tier we
+              <strong>Google (Gemini API)</strong> — receives your voice during calls, conversation transcripts and the custom topics you
+              write, to generate the AI partner’s replies, your practice scenarios and your feedback. Google processes this under its Gemini API terms. Depending on the service tier we
               use, Google may use this content to improve its products.
             </>,
             <>
@@ -115,6 +116,7 @@ export default function PrivacyPage() {
           items={[
             'Your account, transcripts, feedback and progress: until you delete them or your account.',
             'Recordings: until you delete the recording, the conversation, or your account.',
+            'Custom topics: until you delete the topic and the conversations that used it, or your account.',
             'Personal memory: until you delete a memory, turn memory off (which forgets everything), or delete your account.',
             'Sign-in sessions expire after 30 days of inactivity.',
             'When you delete your account, we delete your data from our active systems straight away. Copies in our providers’ backups are removed within 30 days.',

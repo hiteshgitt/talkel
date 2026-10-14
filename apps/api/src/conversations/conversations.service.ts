@@ -135,7 +135,8 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
   async create(userId: string, req: CreateConversationRequest): Promise<CreateConversationResponse> {
     const [scenario, personas, user] = await Promise.all([
       this.prisma.scenario.findFirst({
-        where: { id: req.scenarioId, isActive: true, publishedVersionId: { not: null } },
+        // Built-in scenarios, or the user's own custom topics.
+        where: { id: req.scenarioId, isActive: true, publishedVersionId: { not: null }, OR: [{ ownerId: null }, { ownerId: userId }] },
         include: { publishedVersion: true, missionProgress: { where: { userId } } },
       }),
       this.prisma.persona.findMany({ where: { isActive: true }, orderBy: { sortOrder: 'asc' } }),
@@ -627,6 +628,13 @@ export class ConversationsService implements OnModuleInit, OnApplicationShutdown
     this.pending.delete(id);
     if (owned.recordingKey) await this.recordings.remove(owned.recordingKey);
     await this.prisma.conversationSession.delete({ where: { id } }); // turns/events cascade; usage keeps counting
+
+    // A deleted custom topic is kept while conversations use it: remove it with the last one.
+    const version = await this.prisma.scenarioVersion.findUnique({ where: { id: owned.scenarioVersionId }, select: { scenario: true } });
+    const topic = version?.scenario;
+    if (topic?.ownerId === userId && !topic.isActive && (await this.prisma.conversationSession.count({ where: { scenarioVersion: { scenarioId: topic.id } } })) === 0) {
+      await this.prisma.scenario.delete({ where: { id: topic.id } });
+    }
   }
 
   // ───────────── reads ─────────────

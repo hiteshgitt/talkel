@@ -4,9 +4,9 @@ import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ScenarioArt } from '@/components/art';
 import { LEVEL_LABEL } from '@/components/pickers';
-import { Badge, Button, Card, Choice, ErrorText, Loading, Screen, Title } from '@/components/ui';
+import { Badge, Button, Card, Choice, ErrorText, Loading, Screen, SectionHeader, Title } from '@/components/ui';
 import { friendlyError } from '@/lib/api';
-import { formatMinutes, useCatalog, useQuota } from '@/lib/queries';
+import { formatMinutes, useCatalog, useQuota, useTopics } from '@/lib/queries';
 import { makeStyles, useColors } from '@/theme';
 
 export default function PracticeScreen() {
@@ -14,6 +14,7 @@ export default function PracticeScreen() {
   const c = useColors();
   const catalog = useCatalog();
   const quota = useQuota();
+  const topics = useTopics();
   const [category, setCategory] = useState<string | null>(null);
 
   if (catalog.isPending) return <Loading />;
@@ -45,6 +46,50 @@ export default function PracticeScreen() {
         ) : null}
       </View>
 
+      <SectionHeader
+        title="My topics"
+        icon="sparkles-outline"
+        action={topics.data?.canCreate && topics.data.topics.length > 0 ? { label: 'New', onPress: () => router.push('/topic/edit') } : undefined}
+      />
+      {(topics.data?.topics ?? []).map((t) => (
+        <Card key={t.id} onPress={() => router.push({ pathname: '/scenario/[id]', params: { id: t.id } })} accessibilityLabel={t.title}>
+          <View style={s.cardRow}>
+            <ScenarioArt slug={t.slug} size={60} />
+            <View style={s.cardText}>
+              <Text style={s.title}>{t.title}</Text>
+              <Text style={s.tagline} numberOfLines={2}>
+                {t.tagline}
+              </Text>
+            </View>
+          </View>
+          <View style={s.meta}>
+            <Badge label="Your topic" tone="accent" icon="sparkles" />
+            <Badge label={`with ${t.aiCharacter}`} icon="person-outline" />
+            {t.practised > 0 ? <Badge label={`Practised ${t.practised}×`} icon="checkmark-done-outline" /> : null}
+          </View>
+        </Card>
+      ))}
+      {topics.data && topics.data.topics.length === 0 ? (
+        <Card onPress={() => router.push('/topic/edit')} accessibilityLabel="Create your own topic">
+          <View style={s.cardRow}>
+            <ScenarioArt slug="topic-new" size={60} />
+            <View style={s.cardText}>
+              <Text style={s.title}>Create your own topic</Text>
+              <Text style={s.tagline}>Practise a real conversation from your life — with your manager, landlord, a client or a new friend.</Text>
+            </View>
+          </View>
+        </Card>
+      ) : null}
+      {topics.data && !topics.data.canCreate && topics.data.limit !== null ? (
+        <View style={s.quota}>
+          <Ionicons name="lock-closed" size={14} color={c.warning} />
+          <Text style={s.quotaText}>
+            The free plan includes {topics.data.limit} custom topic. Edit it any time, or go Pro for unlimited topics.
+          </Text>
+        </View>
+      ) : null}
+
+      <SectionHeader title="Situations" icon="albums-outline" />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipsWrap} contentContainerStyle={s.chips}>
         <Choice compact label="All" selected={category === null} onPress={() => setCategory(null)} />
         {categories.map((cat) => (

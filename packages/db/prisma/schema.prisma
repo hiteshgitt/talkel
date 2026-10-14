@@ -42,6 +42,8 @@ model User {
   memories        UserMemory[]
   grammarErrors   GrammarError[]
   vocabularyItems VocabularyItem[]
+  /// Custom topics: private practice scenarios the user created
+  topics          Scenario[]
 
   @@map("users")
 }
@@ -191,16 +193,21 @@ model Scenario {
   publishedVersion   ScenarioVersion?  @relation("Published", fields: [publishedVersionId], references: [id])
   versions           ScenarioVersion[] @relation("Versions")
   missionProgress    MissionProgress[]
+  /// Custom topics: the user who created this private scenario (null: built-in content for everyone).
+  /// Archived topics (isActive false) stay while conversations still use them.
+  ownerId            String?           @db.Uuid
+  owner              User?             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   createdAt          DateTime          @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime          @updatedAt @db.Timestamptz(3)
 
+  @@index([ownerId])
   @@map("scenarios")
 }
 
 model ScenarioVersion {
   id               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   scenarioId       String        @db.Uuid
-  scenario         Scenario      @relation("Versions", fields: [scenarioId], references: [id])
+  scenario         Scenario      @relation("Versions", fields: [scenarioId], references: [id], onDelete: Cascade)
   version          Int
   status           ContentStatus @default(DRAFT)
   /// Selects the params schema and engine behaviour: casual | interview | client | debate | negotiation
@@ -380,6 +387,8 @@ enum UsageKind {
   REALTIME
   EVALUATION
   TRANSCRIPTION
+  /// Building or editing a custom topic (also counted for the daily limit on topic changes)
+  TOPIC
 }
 
 model UsageRecord {

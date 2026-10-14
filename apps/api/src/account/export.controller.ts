@@ -4,6 +4,7 @@ import type { Response } from 'express';
 import { CurrentUser, type SessionUser } from '../auth/auth.decorators.js';
 import { ConversationsService } from '../conversations/conversations.service.js';
 import { PRISMA } from '../db/prisma.module.js';
+import { TopicsService } from '../topics/topics.service.js';
 import { UsersService } from '../users/users.service.js';
 
 /**
@@ -16,11 +17,12 @@ export class ExportController {
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     private readonly users: UsersService,
     private readonly conversations: ConversationsService,
+    private readonly topics: TopicsService,
   ) {}
 
   @Get()
   async export(@CurrentUser() user: SessionUser, @Res() res: Response): Promise<void> {
-    const [me, account, sessions, learning, missions, memories, usage] = await Promise.all([
+    const [me, account, sessions, learning, missions, memories, usage, topics] = await Promise.all([
       this.users.me(user.id),
       this.prisma.user.findUniqueOrThrow({ where: { id: user.id }, select: { createdAt: true, accounts: { select: { providerId: true, createdAt: true } } } }),
       this.prisma.conversationSession.findMany({ where: { userId: user.id }, orderBy: { createdAt: 'asc' }, select: { id: true } }),
@@ -28,6 +30,7 @@ export class ExportController {
       this.prisma.missionProgress.findMany({ where: { userId: user.id }, include: { scenario: { select: { slug: true } } } }),
       this.prisma.userMemory.findMany({ where: { userId: user.id }, orderBy: { createdAt: 'asc' } }),
       this.prisma.usageRecord.groupBy({ by: ['kind'], where: { userId: user.id }, _sum: { billableSeconds: true }, _count: true }),
+      this.topics.list(user.id),
     ]);
 
     const conversations = [];
@@ -47,6 +50,7 @@ export class ExportController {
         bestScores: m.bestScores,
         attempts: m.attempts,
       })),
+      customTopics: topics.topics.map(({ title, area, input, createdAt, updatedAt }) => ({ title, area, input, createdAt, updatedAt })),
       memories: memories.map((m) => ({ kind: m.kind, text: m.text, createdAt: m.createdAt.toISOString(), updatedAt: m.updatedAt.toISOString() })),
       usage: usage.map((u) => ({ kind: u.kind, records: u._count, seconds: u._sum.billableSeconds ?? 0 })),
       conversations,

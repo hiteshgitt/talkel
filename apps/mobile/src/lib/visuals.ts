@@ -33,6 +33,8 @@ function hash(s: string): number {
 }
 
 export function scenarioVisual(slug: string | undefined): Visual {
+  // The user's own topics share one look, so they stand out from built-in scenarios.
+  if (slug?.startsWith('topic-')) return { icon: 'sparkles', tint: '#A855F7' };
   return (slug && SCENARIOS[slug]) || { icon: 'chatbubbles', tint: FALLBACK_TINTS[hash(slug ?? '') % FALLBACK_TINTS.length]! };
 }
 

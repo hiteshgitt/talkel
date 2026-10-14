@@ -1,4 +1,4 @@
-import { type Accent, DURATION_OPTIONS_SEC, type EnglishLevel, type VoicePreference } from '@speakai/contracts';
+import { type Accent, type CustomTopic, DURATION_OPTIONS_SEC, type EnglishLevel, type ScenarioSummary, type VoicePreference } from '@speakai/contracts';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
@@ -7,23 +7,42 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScenarioBanner } from '@/components/art';
 import { JobPicker, useJobChoice } from '@/components/job-picker';
 import { AccentPicker, DurationPicker, LevelPicker, PersonaPicker, Section, VoicePicker } from '@/components/pickers';
+import { TopicCard } from '@/components/topic-card';
 import { Body, Button, Choice, ErrorText, Loading, Screen } from '@/components/ui';
 import { api, friendlyError } from '@/lib/api';
 import { configProblem } from '@/lib/config';
-import { createdConversationKey, formatMinutes, useCatalog, useMe, useQuota } from '@/lib/queries';
+import { createdConversationKey, formatMinutes, useCatalog, useMe, useQuota, useTopics } from '@/lib/queries';
 import { nativeCallingProblem } from '@/lib/runtime';
 import { makeStyles } from '@/theme';
 
-/** Conversation setup: partner, difficulty, length, live correction. */
+const AREA_NAME: Record<CustomTopic['area'], string> = { everyday: 'Everyday', work: 'Work', 'real-life': 'Real life' };
+
+/** A custom topic, shown and started like any scenario. */
+function topicScenario(t: CustomTopic): ScenarioSummary {
+  return {
+    id: t.id,
+    slug: t.slug,
+    category: { slug: t.area, name: `Your topic · ${AREA_NAME[t.area]}` },
+    title: t.title,
+    tagline: t.tagline,
+    minLevel: 'BEGINNER',
+    estimatedMinutes: 5,
+    ownJob: null,
+  };
+}
+
+/** Conversation setup: partner, difficulty, length, live correction. Also for the user's own topics. */
 export default function ScenarioSetupScreen() {
   const s = useStyles();
   const { id } = useLocalSearchParams<{ id: string }>();
   const qc = useQueryClient();
   const catalog = useCatalog();
   const quota = useQuota();
+  const topics = useTopics();
   const { data: me } = useMe();
 
-  const scenario = catalog.data?.scenarios.find((x) => x.id === id);
+  const topic = topics.data?.topics.find((t) => t.id === id);
+  const scenario = catalog.data?.scenarios.find((x) => x.id === id) ?? (topic ? topicScenario(topic) : undefined);
   const canChoosePartner = me?.entitlements.choosePartner ?? false;
   const canChooseAccent = me?.entitlements.chooseAccent ?? false;
   const preferred: VoicePreference = me?.settings.preferredVoiceGender === 'MALE' ? 'MALE' : me?.settings.preferredVoiceGender === 'FEMALE' ? 'FEMALE' : 'RANDOM';
@@ -62,7 +81,7 @@ export default function ScenarioSetupScreen() {
     },
   });
 
-  if (catalog.isPending || quota.isPending) return <Loading />;
+  if (catalog.isPending || quota.isPending || (!scenario && topics.isPending)) return <Loading />;
   if (!scenario) {
     return (
       <Screen>
@@ -84,6 +103,8 @@ export default function ScenarioSetupScreen() {
           <Text style={s.title}>{scenario.title}</Text>
           <Text style={s.tagline}>{scenario.tagline}</Text>
         </ScenarioBanner>
+
+        {topic ? <TopicCard topic={topic} /> : null}
 
         {scenario.ownJob ? (
           <Section title="Which job?" icon="briefcase-outline">

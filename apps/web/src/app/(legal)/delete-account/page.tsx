@@ -48,13 +48,14 @@ export default function DeleteAccountPage() {
             'your account details and learning profile;',
             'all conversations, transcripts, feedback, scores and progress;',
             'call recordings;',
+            'custom topics you created;',
             'personal memories and settings.',
           ]}
         />
         <p>
           It is removed from our active systems straight away, and from our providers’ backups within 30 days. We send a
           confirmation email when it’s done. If you only want to remove some data, you can instead delete single conversations,
-          recordings or memories in the app and keep your account.
+          recordings, memories or custom topics in the app and keep your account.
         </p>
       </Section>
     </LegalPage>

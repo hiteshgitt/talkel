@@ -8,7 +8,7 @@ import { Badge, Button, Card, ErrorText, ListRow, ProgressBar, Screen, SectionHe
 import { api, friendlyError } from '@/lib/api';
 import { configProblem } from '@/lib/config';
 import { MISTAKE_LABEL } from '@/lib/labels';
-import { CONVERSATIONS_KEY, createdConversationKey, formatMinutes, useCatalog, useMe, useQuota } from '@/lib/queries';
+import { CONVERSATIONS_KEY, createdConversationKey, formatMinutes, useCatalog, useMe, useQuota, useTopics } from '@/lib/queries';
 import { nativeCallingProblem } from '@/lib/runtime';
 import { levelName, useMissions } from '@/lib/missions';
 import { LevelDots } from '@/components/mission-ui';
@@ -27,6 +27,7 @@ export default function HomeScreen() {
   const { data: me } = useMe();
   const catalog = useCatalog();
   const quota = useQuota();
+  const topics = useTopics();
   const progress = useQuery({ queryKey: ['progress'], queryFn: api.progress });
   const missions = useMissions();
   const latest = useQuery({ queryKey: [...CONVERSATIONS_KEY, 'latest'], queryFn: () => api.conversations() });
@@ -143,7 +144,21 @@ export default function HomeScreen() {
 
       <SectionHeader title="Practise a situation" action={{ label: 'See all', onPress: () => router.push('/practice') }} />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.carousel} style={s.carouselWrap}>
-        {(catalog.data?.scenarios ?? []).map((x) => (
+        {topics.data && topics.data.topics.length === 0 ? (
+          <Pressable
+            onPress={() => router.push('/topic/edit')}
+            accessibilityRole="button"
+            accessibilityLabel="Create your own topic"
+            style={({ pressed }) => [s.tile, pressed && s.pressed]}
+          >
+            <ScenarioArt slug="topic-new" size={48} />
+            <Text style={s.tileTitle} numberOfLines={2}>
+              Your own topic
+            </Text>
+            <Text style={s.mutedSmall}>Create one</Text>
+          </Pressable>
+        ) : null}
+        {[...(topics.data?.topics ?? []), ...(catalog.data?.scenarios ?? [])].map((x) => (
           <Pressable
             key={x.id}
             onPress={() => router.push({ pathname: '/scenario/[id]', params: { id: x.id } })}
@@ -155,7 +170,7 @@ export default function HomeScreen() {
             <Text style={s.tileTitle} numberOfLines={2}>
               {x.title}
             </Text>
-            <Text style={s.mutedSmall}>~{x.estimatedMinutes} min</Text>
+            <Text style={s.mutedSmall}>{'estimatedMinutes' in x ? `~${x.estimatedMinutes} min` : 'Your topic'}</Text>
           </Pressable>
         ))}
       </ScrollView>

@@ -8,7 +8,7 @@ export const LEGAL = {
   location: 'Pune, Maharashtra, India',
   courts: 'Pune, Maharashtra',
   email: 'talkel.app@gmail.com',
-  updated: '13 October 2026',
+  updated: '14 October 2026',
 } as const;
 
 const PAGES = [

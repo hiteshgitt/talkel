@@ -74,7 +74,13 @@ export const Me = z.object({
     hasPassword: z.boolean(),
   }),
   /** What the plan allows. Free: the partner's voice and accent are chosen at random. */
-  entitlements: z.object({ choosePartner: z.boolean(), chooseAccent: z.boolean(), recordCalls: z.boolean().default(false) }),
+  entitlements: z.object({
+    choosePartner: z.boolean(),
+    chooseAccent: z.boolean(),
+    recordCalls: z.boolean().default(false),
+    /** How many custom topics the user may keep (null: unlimited). */
+    customTopics: z.number().int().nullable().default(1),
+  }),
   profile: z.object({
     displayName: z.string().nullable(),
     nativeLanguage: z.string().nullable(),
@@ -189,6 +195,63 @@ export type PersonaSummary = z.infer<typeof PersonaSummary>;
 
 export const Catalog = z.object({ scenarios: z.array(ScenarioSummary), personas: z.array(PersonaSummary) });
 export type Catalog = z.infer<typeof Catalog>;
+
+// ───────────── Custom topics ─────────────
+
+/** Where a custom topic belongs (the practice categories). */
+export const TopicArea = z.enum(['everyday', 'work', 'real-life']);
+export type TopicArea = z.infer<typeof TopicArea>;
+
+/** How the AI partner behaves in a custom topic. */
+export const TopicMood = z.enum(['FRIENDLY', 'REALISTIC', 'TOUGH']);
+export type TopicMood = z.infer<typeof TopicMood>;
+
+/**
+ * What the user writes to create (or change) a custom topic. Free text in any mix of English and
+ * Hindi; the server turns it into a full scenario and checks that it is suitable.
+ */
+export const TopicInput = z.object({
+  area: TopicArea,
+  /** The situation, in the user's own words. */
+  situation: z.string().trim().min(10).max(500),
+  /** Who the AI should be (e.g. "my manager, a bit strict"). */
+  partner: z.string().trim().max(120).optional(),
+  /** What the user wants to achieve in the conversation. */
+  goal: z.string().trim().max(200).optional(),
+  mood: TopicMood.default('REALISTIC'),
+});
+export type TopicInput = z.infer<typeof TopicInput>;
+
+export const CustomTopic = z.object({
+  /** The scenario id: start a call with it like any scenario. */
+  id: z.string(),
+  slug: z.string(),
+  area: TopicArea,
+  title: z.string(),
+  tagline: z.string(),
+  briefing: z.string(),
+  userRole: z.string(),
+  objective: z.string(),
+  /** Who the AI plays, e.g. "Your manager, Mr Mehta". */
+  aiCharacter: z.string(),
+  /** What the user should try to do (user-facing wording). */
+  goals: z.array(z.string()),
+  /** What the user wrote, to edit it. */
+  input: TopicInput,
+  /** Ended conversations on this topic. */
+  practised: z.number().int(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type CustomTopic = z.infer<typeof CustomTopic>;
+
+export const TopicList = z.object({
+  topics: z.array(CustomTopic),
+  /** The plan's limit (null: unlimited). */
+  limit: z.number().int().nullable(),
+  canCreate: z.boolean(),
+});
+export type TopicList = z.infer<typeof TopicList>;
 
 // ───────────── Missions (M4) ─────────────
 

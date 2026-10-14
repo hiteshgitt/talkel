@@ -14,6 +14,7 @@ export const queryClient = new QueryClient({
 export const ME_KEY = ['me'] as const;
 export const QUOTA_KEY = ['quota'] as const;
 export const CONVERSATIONS_KEY = ['conversations'] as const;
+export const TOPICS_KEY = ['topics'] as const;
 /** The just-created conversation (brief, partner), handed from setup to the brief screen. */
 export const createdConversationKey = (id: string) => ['created-conversation', id] as const;
 export const conversationKey = (id: string) => ['conversation', id] as const;
@@ -25,6 +26,11 @@ export function useMe(enabled = true) {
 /** Scenarios and personas change rarely: cache for 10 minutes. */
 export function useCatalog() {
   return useQuery({ queryKey: ['catalog'], queryFn: api.catalog, staleTime: 10 * 60_000 });
+}
+
+/** The user's own custom topics. */
+export function useTopics() {
+  return useQuery({ queryKey: TOPICS_KEY, queryFn: api.topics });
 }
 
 export function useQuota() {

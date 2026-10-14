@@ -24,4 +24,7 @@ export async function purgeUserFiles(
   await Promise.all(sessions.map((s) => rm(join(resolve(files.callLogDir), `${s.id}.jsonl`), { force: true })));
   // Recording keys are "<userId>/<conversationId>.ogg": one prefix (disk folder or R2) per user.
   await files.recordings.removeUser(userId);
+  // Custom topics cascade with the user, but their scenario versions are referenced by conversations:
+  // delete the conversations first so the order of the cascades doesn't matter.
+  await prisma.conversationSession.deleteMany({ where: { userId } });
 }

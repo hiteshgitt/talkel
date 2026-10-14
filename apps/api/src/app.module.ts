@@ -23,6 +23,8 @@ import { LearningProfileService } from './analysis/learning-profile.service.js';
 import { createRecordingStore, RECORDING_STORE } from './recording/recording-store.js';
 import { UsersController } from './users/users.controller.js';
 import { UsersService } from './users/users.service.js';
+import { TopicsController } from './topics/topics.controller.js';
+import { TopicsService } from './topics/topics.service.js';
 
 @Controller('health')
 class HealthController {
@@ -50,7 +52,7 @@ export class AppModule {
         PrismaModule,
         AuthModule,
       ],
-      controllers: [HealthController, UsersController, AdminController, CatalogController, ConversationsController, ProgressController, MissionsController, MemoryController, ExportController, RtcController],
+      controllers: [HealthController, UsersController, AdminController, CatalogController, ConversationsController, ProgressController, MissionsController, MemoryController, ExportController, RtcController, TopicsController],
       providers: [
         UsersService,
         QuotaService,
@@ -63,6 +65,7 @@ export class AppModule {
         LearningProfileService,
         AnalysisService,
         RephraseService,
+        TopicsService,
         IceServers,
         { provide: RECORDING_STORE, useFactory: () => createRecordingStore(env) },
       ],

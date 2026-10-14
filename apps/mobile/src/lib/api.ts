@@ -4,6 +4,7 @@ import {
   ConnectResponse,
   ConversationDetail,
   ConversationList,
+  CustomTopic,
   type CreateConversationRequest,
   CreateConversationResponse,
   type LiveAudioRequest,
@@ -24,6 +25,8 @@ import {
   Quota,
   SayItResult,
   type SettingsPatch,
+  type TopicInput,
+  TopicList,
 } from '@speakai/contracts';
 import { z } from 'zod';
 import { authClient } from './auth-client';
@@ -40,7 +43,7 @@ export class ApiError extends Error {
   }
 }
 
-type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 /** Calls our API with the signed-in user's session cookie and validates the response. */
 async function request<S extends z.ZodType>(
@@ -102,6 +105,10 @@ export const api = {
   memories: () => request('/me/memories', { method: 'GET' }, MemoryList),
   deleteMemory: (id: string) => request(`/me/memories/${encodeURIComponent(id)}`, { method: 'DELETE' }, null),
   clearMemories: () => request('/me/memories', { method: 'DELETE' }, null),
+  topics: () => request('/topics', { method: 'GET' }, TopicList),
+  createTopic: (body: TopicInput) => request('/topics', { method: 'POST', body }, CustomTopic),
+  updateTopic: (id: string, body: TopicInput) => request(`/topics/${encodeURIComponent(id)}`, { method: 'PUT', body }, CustomTopic),
+  deleteTopic: (id: string) => request(`/topics/${encodeURIComponent(id)}`, { method: 'DELETE' }, null),
   mistakes: (category: string) => request(`/progress/mistakes/${encodeURIComponent(category)}`, { method: 'GET' }, MistakeList),
 
   createConversation: (body: CreateConversationRequest) =>

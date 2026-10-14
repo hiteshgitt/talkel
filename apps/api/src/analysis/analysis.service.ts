@@ -82,7 +82,7 @@ export class AnalysisService {
     const goals = Goals.parse(v.goals);
     const feedbackLanguage = FeedbackLanguage.catch('en').parse(session.user.settings?.feedbackLanguage);
     const scenarios = await this.prisma.scenario.findMany({
-      where: { type: 'PRACTICE', isActive: true, publishedVersionId: { not: null } },
+      where: { type: 'PRACTICE', isActive: true, publishedVersionId: { not: null }, ownerId: null },
       select: { slug: true, publishedVersion: { select: { title: true } } },
     });
 

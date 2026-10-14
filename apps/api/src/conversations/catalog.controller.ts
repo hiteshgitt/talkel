@@ -15,7 +15,7 @@ export class CatalogController {
   async catalog(): Promise<Catalog> {
     const [scenarios, personas] = await Promise.all([
       this.prisma.scenario.findMany({
-        where: { type: 'PRACTICE', isActive: true, publishedVersionId: { not: null } },
+        where: { type: 'PRACTICE', isActive: true, publishedVersionId: { not: null }, ownerId: null },
         orderBy: { sortOrder: 'asc' },
         include: { category: true, publishedVersion: true },
       }),

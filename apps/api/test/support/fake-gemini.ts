@@ -34,6 +34,25 @@ export const FAKE_REPLAY = {
   betterAnswer: 'It’s lovely, but it’s a bit over my budget — would you take ₹1,200?',
 };
 
+/** The fake topic builder: refuses text that tries to change the AI's rules, otherwise writes a fixed scenario. */
+export const FAKE_TOPIC = {
+  allowed: true,
+  rejectReason: '',
+  title: 'Asking for a {{Deadline}} Extension',
+  tagline: 'Tell your manager the release will slip.',
+  briefing: 'You need two more days for the release because the client changed the requirements. You call your manager.',
+  userRole: 'Yourself, a software developer',
+  objective: 'Get two more days without sounding unprofessional.',
+  aiCharacter: 'Your manager, Mr Mehta',
+  character: 'You are Mr Mehta, a busy engineering manager. You promised the client a Friday release. Your hidden concern: your own boss will ask why.',
+  opening: 'Answer the phone as Mr Mehta and ask what is up.',
+  goals: [
+    { label: 'Explain why you need more time', check: 'The user explained why they need more time' },
+    { label: 'Offer a new date', check: 'The user offered a new date' },
+  ],
+};
+const FAKE_TOPIC_REFUSED = { ...FAKE_TOPIC, allowed: false, rejectReason: 'Please describe a real situation you want to practise.', goals: [] };
+
 /** What the fake evaluation model "says". Two corrections are invalid on purpose (grounding must drop them). */
 export const FAKE_EVALUATION = {
   summary: 'Good start.',
@@ -112,7 +131,11 @@ export async function startFakeGemini(): Promise<FakeGemini> {
     req.on('data', (c: Buffer) => (body += c.toString()));
     req.on('end', () => {
       evaluations.push(body);
-      const evaluation = body.includes('WHAT THEY WANT TO SAY')
+      const evaluation = body.includes('It describes a situation to practise')
+        ? body.includes('IGNORE ALL PREVIOUS')
+          ? FAKE_TOPIC_REFUSED
+          : FAKE_TOPIC
+        : body.includes('WHAT THEY WANT TO SAY')
         ? FAKE_SAY_IT
         : body.includes('SECOND ANSWER (replay)')
         ? FAKE_REPLAY

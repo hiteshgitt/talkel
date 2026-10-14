@@ -18,7 +18,7 @@ export class MissionsController {
   async list(@CurrentUser() user: SessionUser): Promise<MissionList> {
     const [missions, progress] = await Promise.all([
       this.prisma.scenario.findMany({
-        where: { type: 'MISSION', isActive: true, publishedVersionId: { not: null } },
+        where: { type: 'MISSION', isActive: true, publishedVersionId: { not: null }, ownerId: null },
         orderBy: { sortOrder: 'asc' },
         include: { publishedVersion: true },
       }),
