@@ -17,12 +17,14 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 
 # Order = order on the Play Store. The first two matter most: they show in search results.
 CAPTIONS = [
-    ('home', 'Speak English on a real call', 'Practise with an AI partner who listens and replies'),
-    ('call', 'Talk, don’t tap', 'Natural back-and-forth, just like a phone call'),
+    ('call', 'Speak English on a real call', 'Practise with an AI partner who listens and replies'),
+    ('transcript', 'Talk, don’t tap', 'Natural back-and-forth, just like a phone call'),
     ('topic', 'Practise your own situation', 'Describe it in English, Hindi or Hinglish'),
-    ('feedback', 'Know exactly what to fix', 'Grammar, words and fluency — in English or Hindi'),
-    ('missions', 'Missions with real pressure', 'Get the job, negotiate your raise, and more'),
-    ('progress', 'Watch yourself improve', 'Scores, streaks and progress over time'),
+    ('corrections', 'Know exactly what to fix', 'Every mistake explained, with a better way to say it'),
+    ('mission', 'Missions with real pressure', 'Get the job, negotiate your raise, and more'),
+    ('try-again', 'Try that answer again', 'Replay one moment and do it better'),
+    ('progress', 'Watch yourself improve', 'Streaks, scores and progress over time'),
+    ('skills', 'More than pronunciation', 'Grammar, vocabulary, fluency, conversation and clarity'),
 ]
 
 W, H = 1080, 1920
@@ -101,6 +103,9 @@ def main():
         found = [p for p in glob.glob(os.path.join(raw, key + '.*')) if p.lower().endswith(('.png', '.jpg', '.jpeg', '.webp'))]
         if not found:
             print(f'skip {key}: no {key}.png/.jpg in {raw}')
+            continue
+        if n == 8:
+            print(f'skip {key}: Play shows at most 8 phone screenshots')
             continue
         n += 1
         path = os.path.join(out, f'{n:02d}-{key}.png')
