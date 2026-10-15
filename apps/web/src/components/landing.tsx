@@ -291,8 +291,8 @@ function PhoneCall() {
             <span className="rounded-full bg-danger/15 px-2 py-0.5 font-semibold text-danger">● REC</span>
           </div>
           <div className="mt-10 flex flex-col items-center gap-3">
-            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-[#2b5bff] to-[#18e0e6] text-3xl font-bold text-white">P</div>
-            <p className="text-lg font-semibold text-fg">Priya</p>
+            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-[#2b5bff] to-[#18e0e6] text-3xl font-bold text-white">R</div>
+            <p className="text-lg font-semibold text-fg">Ruya</p>
             <p className="text-sm text-muted">Hiring manager · 03:12</p>
           </div>
           <div className="mt-8 rounded-2xl bg-surface p-4 text-sm leading-relaxed text-fg">
