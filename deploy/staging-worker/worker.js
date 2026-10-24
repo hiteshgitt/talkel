@@ -1,5 +1,5 @@
 /**
- * Permanent staging address (talkel-staging.<subdomain>.workers.dev): /v1/* → the API, everything
+ * Permanent staging address (talkel.ruyalab.com, also talkel-staging.<subdomain>.workers.dev): /v1/* → the API, everything
  * else → the web app. The origins are plain-text bindings (API_ORIGIN, WEB_ORIGIN) set by deploy.sh.
  * A cron trigger pings the API every 10 minutes so a free host that sleeps when idle (Render) stays awake.
  */

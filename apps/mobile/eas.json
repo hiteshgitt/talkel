@@ -24,8 +24,8 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://talkel-staging.talkel.workers.dev/v1",
-        "EXPO_PUBLIC_WEB_URL": "https://talkel-staging.talkel.workers.dev"
+        "EXPO_PUBLIC_API_URL": "https://talkel.ruyalab.com/v1",
+        "EXPO_PUBLIC_WEB_URL": "https://talkel.ruyalab.com"
       }
     },
     "staging": {
@@ -34,8 +34,8 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://talkel-staging.talkel.workers.dev/v1",
-        "EXPO_PUBLIC_WEB_URL": "https://talkel-staging.talkel.workers.dev"
+        "EXPO_PUBLIC_API_URL": "https://talkel.ruyalab.com/v1",
+        "EXPO_PUBLIC_WEB_URL": "https://talkel.ruyalab.com"
       }
     }
   }

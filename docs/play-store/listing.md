@@ -5,7 +5,7 @@ Paste these into Play Console → Grow → Store presence → Main store listing
 - **App name** (max 30): `Talkel: AI English Speaking`
 - **Category:** Education
 - **Contact email:** talkel.app@gmail.com
-- **Privacy policy:** https://talkel-staging.talkel.workers.dev/privacy (move to your own domain later)
+- **Privacy policy:** https://talkel.ruyalab.com/privacy
 - **App icon:** `icon-512.png`
 - **Feature graphic:** `feature-graphic-1024x500.png`
 - **Phone screenshots:** 2–8, portrait, from the app (home, a call, feedback, missions)
