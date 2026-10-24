@@ -5,7 +5,7 @@ import { SignOutButton } from './sign-out-button';
 
 export function AppHeader({ me }: { me: Me }) {
   return (
-    <header className="border-b border-line">
+    <header className="sticky top-0 z-20 border-b border-line/80 bg-bg/75 backdrop-blur-xl">
       <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4">
         <Brand size={28} />
         <nav className="flex items-center gap-5 text-sm">

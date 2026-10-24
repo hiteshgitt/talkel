@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { type FormEvent, useState } from 'react';
+import { GoogleAuthButton } from '@/components/google-auth-button';
 import { AuthShell, Button, ErrorText, Field } from '@/components/ui';
 import { authClient } from '@/lib/auth-client';
 
@@ -48,21 +49,22 @@ export default function SignUpPage() {
           onChange={(e) => setPassword(e.target.value)}
         />
         <ErrorText>{error}</ErrorText>
-        <p className="text-center text-xs leading-relaxed text-muted">
-          By creating an account you confirm you’re 18 or older and agree to our{' '}
-          <Link href="/terms" className="text-accent hover:underline">
-            terms
-          </Link>{' '}
-          and{' '}
-          <Link href="/privacy" className="text-accent hover:underline">
-            privacy policy
-          </Link>
-          .
-        </p>
         <Button type="submit" loading={busy}>
           Create account
         </Button>
       </form>
+      <GoogleAuthButton />
+      <p className="text-center text-xs leading-relaxed text-muted">
+        By continuing you confirm you’re 18 or older and agree to our{' '}
+        <Link href="/terms" className="text-accent hover:underline">
+          terms
+        </Link>{' '}
+        and{' '}
+        <Link href="/privacy" className="text-accent hover:underline">
+          privacy policy
+        </Link>
+        .
+      </p>
       <Link href="/sign-in" className="block text-center text-sm text-accent hover:underline">
         Already have an account? Sign in
       </Link>

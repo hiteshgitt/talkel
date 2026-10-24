@@ -1,8 +1,14 @@
 import type { Metadata } from 'next';
-import { Geist } from 'next/font/google';
+import { Geist, Outfit } from 'next/font/google';
 import './globals.css';
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
+const outfit = Outfit({
+  variable: '--font-outfit',
+  subsets: ['latin'],
+  weight: ['400', '500', '600'],
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   // Absolute URLs for link previews (the share image, icons).
@@ -11,10 +17,15 @@ export const metadata: Metadata = {
   description: 'Practise real English conversations with AI, then get friendly feedback.',
 };
 
+const themeScript = `(function(){try{var t=localStorage.getItem('talkel-theme');if(t!=='light'&&t!=='dark'){t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';}document.documentElement.dataset.theme=t;}catch(e){}})();`;
+
 export default function RootLayout({ children }: LayoutProps<'/'>) {
   return (
-    <html lang="en" className={`${geistSans.variable} h-full antialiased`}>
-      <body className="flex min-h-full flex-col font-sans">{children}</body>
+    <html lang="en" className={`${geistSans.variable} ${outfit.variable} h-full antialiased`} suppressHydrationWarning>
+      <body className="flex min-h-full flex-col font-sans">
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        {children}
+      </body>
     </html>
   );
 }

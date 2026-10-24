@@ -13,8 +13,8 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [{ source: '/v1/:path*', destination: `${apiInternalUrl}/v1/:path*` }];
   },
-  // The dev server is opened from phones/laptops on the LAN by IP address.
-  allowedDevOrigins: webHost ? [webHost] : [],
+  // Localhost is always allowed. The LAN host comes from NEXT_PUBLIC_WEB_URL so phones can open the dev server.
+  allowedDevOrigins: ['localhost', '127.0.0.1', ...(webHost ? [webHost] : [])],
 };
 
 export default nextConfig;

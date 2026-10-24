@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { type FormEvent, Suspense, useState } from 'react';
+import { GoogleAuthButton } from '@/components/google-auth-button';
 import { AuthShell, Button, ErrorText, Field } from '@/components/ui';
 import { authClient } from '@/lib/auth-client';
 
@@ -67,6 +68,7 @@ function SignInForm() {
           Sign in
         </Button>
       </form>
+      <GoogleAuthButton callbackURL={next} />
       <div className="space-y-2 text-center text-sm">
         <Link href="/sign-up" className="block text-accent hover:underline">
           New here? Create an account

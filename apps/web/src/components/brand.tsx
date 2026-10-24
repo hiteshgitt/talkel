@@ -5,8 +5,8 @@ import Link from 'next/link';
 export function Brand({ size = 32 }: { size?: number }) {
   return (
     <Link href="/" className="inline-flex items-center gap-2.5" aria-label="Talkel home">
-      <Image src="/logo.png" alt="" width={size} height={size} priority />
-      <span className="text-lg font-bold tracking-tight text-fg">Talkel</span>
+      <Image src="/logo-mark.png" alt="" width={size} height={size} priority />
+      <span className="font-display text-[1.05rem] font-medium tracking-tight text-fg">Talkel</span>
     </Link>
   );
 }

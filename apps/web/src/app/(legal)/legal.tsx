@@ -7,7 +7,7 @@ export const LEGAL = {
   operator: 'an individual developer',
   location: 'Pune, Maharashtra, India',
   courts: 'Pune, Maharashtra',
-  email: 'talkel.app@gmail.com',
+  email: 'talkel@ruyalab.com',
   updated: '14 October 2026',
 } as const;
 

@@ -7,7 +7,7 @@ export { Field } from './field';
 export function AuthShell({ title, subtitle, children }: { title: string; subtitle?: string; children: ReactNode }) {
   return (
     <main className="flex flex-1 items-center justify-center px-4 py-12">
-      <div className="w-full max-w-sm space-y-6">
+      <div className="w-full max-w-md space-y-6 rounded-3xl border border-line bg-surface/75 p-6 shadow-[0_30px_80px_-40px_rgba(110,139,255,0.55)] backdrop-blur-xl sm:p-8">
         <div className="space-y-2">
           <Brand />
           <h1 className="text-3xl font-bold text-fg">{title}</h1>

@@ -10,19 +10,27 @@
     "typecheck": "next typegen && tsc --noEmit"
   },
   "dependencies": {
+    "@react-three/drei": "^10.7.9",
+    "@react-three/fiber": "^9.8.2",
     "@speakai/contracts": "workspace:*",
     "better-auth": "^1.7.6",
+    "gsap": "^3.15.0",
+    "hammerjs": "^2.0.8",
+    "lenis": "^1.3.27",
     "next": "16.3.7",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "server-only": "^0.0.1",
+    "three": "^0.180.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/hammerjs": "^2.0.46",
     "@types/node": "^24.0.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/three": "0.180.0",
     "eslint": "^9",
     "eslint-config-next": "16.3.7",
     "tailwindcss": "^4",
