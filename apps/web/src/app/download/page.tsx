@@ -171,6 +171,10 @@ export default function DownloadPage() {
           <span className="flex items-center gap-3">
             <Brand size={24} />
             <span>© {new Date().getFullYear()}</span>
+            <span aria-hidden="true">·</span>
+            <a href="https://ruyalab.com/" className="hover:text-fg">
+              Built by Ruyalab
+            </a>
           </span>
           <nav className="flex flex-wrap gap-5">
             <Link href="/" className="hover:text-fg">

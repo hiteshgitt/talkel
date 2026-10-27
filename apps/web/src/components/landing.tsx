@@ -159,14 +159,6 @@ export function Landing() {
             scrollTrigger: { trigger: el, start: 'top 88%', once: true },
           });
         });
-        const line = scope.querySelector('[data-how-line]');
-        if (line) {
-          gsap.fromTo(line, { scaleX: 0 }, {
-            scaleX: 1,
-            ease: 'none',
-            scrollTrigger: { trigger: '#how', start: 'top 70%', end: 'bottom 65%', scrub: 0.4 },
-          });
-        }
         scope.querySelectorAll<HTMLElement>('[data-count]').forEach((el) => {
           const target = Number(el.dataset.count ?? '0');
           const value = { n: 0 };
@@ -195,44 +187,40 @@ export function Landing() {
   }, []);
 
   return (
-    <div ref={root} className="flex-1 overflow-x-clip bg-bg text-fg">
+    <div ref={root} className="relative flex-1 overflow-x-clip bg-bg text-fg">
+      <div className="starfield pointer-events-none absolute inset-0" aria-hidden />
+      <div className="aurora" aria-hidden />
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-full focus:bg-accent focus:px-4 focus:py-2 focus:text-white">
         Skip to content
       </a>
-      <header data-header className="site-header page-wrap fixed z-30 py-3">
-        <TopBar />
-        <div data-progress className="absolute inset-x-8 bottom-0 h-px origin-left bg-gradient-to-r from-accent to-glow" style={{ transform: 'scaleX(0)' }} />
+      <header className="fixed inset-x-0 top-4 z-30 px-[var(--gutter)]">
+        <div data-header className="float-nav relative rounded-full px-3 py-2 sm:px-4">
+          <TopBar />
+          <div data-progress className="absolute inset-x-8 bottom-0 h-px origin-left bg-gradient-to-r from-accent to-glow" style={{ transform: 'scaleX(0)' }} />
+        </div>
       </header>
 
       <main id="main">
-        <section className="page-wrap grid items-center gap-[var(--space-block)] pt-[clamp(104px,9vw,140px)] pb-[clamp(36px,4vw,72px)] lg:grid-cols-[1.05fr_0.95fr]">
-          <div className="order-2 min-w-0 lg:order-1">
-            <p data-hero className="text-sm font-medium text-accent">Android app · launching soon</p>
-            <h1 data-hero className="hero-title mt-[clamp(12px,1.2vw,18px)]">
-              Practise the conversation you’re <span className="text-accent">scared of</span> — before it’s real.
-            </h1>
-            <p data-hero className="mt-[clamp(16px,1.4vw,24px)] max-w-[46ch] text-[length:var(--lead-size)] leading-relaxed text-muted">
-              Talkel is a real phone call with an AI partner. Rehearse your job interview, salary talk or tough client call, then see exactly what to fix.
-            </p>
-            <div data-hero className="mt-[clamp(20px,1.8vw,28px)] flex max-w-full flex-wrap gap-3">
-              <CtaButton>Get early access</CtaButton>
-              <a href="#how" className="rounded-full border border-line bg-surface px-[clamp(18px,1.4vw,28px)] py-[clamp(12px,0.8vw,16px)] font-medium text-fg transition hover:border-accent">
-                See how it works
-              </a>
-            </div>
+        <section className="page-wrap relative pt-[clamp(128px,11vw,168px)] pb-[clamp(28px,3vw,48px)] text-center">
+          <p data-hero className="text-sm font-medium text-accent">Android app · launching soon</p>
+          <h1 data-hero className="hero-title mx-auto mt-[clamp(12px,1.2vw,18px)] max-w-[14em]">
+            Practise the conversation you’re <span className="text-gradient">scared of</span> — before it’s real.
+          </h1>
+          <p data-hero className="mx-auto mt-[clamp(16px,1.4vw,24px)] max-w-[46ch] text-[length:var(--lead-size)] leading-relaxed text-muted">
+            Talkel is a real phone call with an AI partner. Rehearse your job interview, salary talk or tough client call, then see exactly what to fix.
+          </p>
+          <div data-hero className="mt-[clamp(20px,1.8vw,28px)] flex flex-wrap items-center justify-center gap-3">
+            <CtaButton>Get early access</CtaButton>
+            <a href="#how" className="rounded-full border border-line bg-surface/70 px-[clamp(18px,1.4vw,28px)] py-[clamp(12px,0.8vw,16px)] font-medium text-fg shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur transition hover:border-accent">
+              See how it works
+            </a>
           </div>
-          <div data-hero className="relative order-1 min-w-0 lg:order-2">
-            <div className="pointer-events-none absolute inset-[12%] rounded-full bg-accent/15 blur-3xl" />
-            <div className="mark-stage">
-              <LogoStage />
-            </div>
-            <p className="mt-2 text-center text-sm text-muted">Drag the mark to turn it</p>
-          </div>
+          <HeroStage />
         </section>
 
         <Marquee />
 
-        <section className="border-y border-line">
+        <section>
           <ul className="page-wrap grid gap-[clamp(14px,1.4vw,24px)] py-[clamp(16px,1.4vw,24px)] text-sm text-muted sm:grid-cols-2 lg:grid-cols-4">
             {(
               [
@@ -250,36 +238,71 @@ export function Landing() {
           </ul>
         </section>
 
-        <Section id="how" index="01" title="How it works" lead="Three steps, ten minutes a day.">
-          <div className="relative">
-            <div data-how-line className="absolute top-4 right-4 left-4 hidden h-px origin-left bg-gradient-to-r from-accent to-glow sm:block" />
-            <ol className="grid gap-4 sm:grid-cols-3">
-              {[
-                ['Pick a situation', 'A friendly chat, a job interview for your own role, or a mission like negotiating your raise.'],
-                ['Talk it out', 'A live voice call with an AI character who reacts, asks follow-ups and pushes back.'],
-                ['See what to fix', 'Your score, every mistake with the fix, better phrasing — then try that answer again.'],
-              ].map(([title, body], index) => (
-                <li key={title} data-reveal className="border-t border-line pt-5">
-                  <div className="flex items-center gap-3">
-                    <Glyph name={index === 0 ? 'target' : index === 1 ? 'phone' : 'chart'} />
-                    <span className="text-sm font-medium text-accent">0{index + 1}</span>
-                  </div>
-                  <h3 className="mt-4 font-semibold text-fg">{title}</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-muted">{body}</p>
-                </li>
-              ))}
-            </ol>
+        <section id="how" className="page-wrap scroll-mt-28 py-[clamp(40px,4vw,72px)]">
+          <div className="glass relative overflow-hidden rounded-[2rem] px-6 py-8 sm:px-10 sm:py-12">
+            <div className="pointer-events-none absolute -top-24 right-0 h-56 w-56 rounded-full bg-accent/20 blur-3xl" />
+            <div className="grid items-center gap-10 lg:grid-cols-[0.8fr_1.2fr]">
+              <div>
+                <p className="text-sm font-medium text-accent">01</p>
+                <h2 data-reveal className="section-title mt-2">How it works</h2>
+                <p className="mt-3 max-w-[36ch] text-[length:var(--lead-size)] text-muted">Three steps, ten minutes a day.</p>
+              </div>
+              <ol className="grid gap-4 sm:grid-cols-3">
+                {(
+                  [
+                    ['target', 'Pick a situation', 'A friendly chat, a job interview for your own role, or a mission like negotiating your raise.'],
+                    ['phone', 'Talk it out', 'A live voice call with an AI character who reacts, asks follow-ups and pushes back.'],
+                    ['chart', 'See what to fix', 'Your score, every mistake with the fix, better phrasing — then try that answer again.'],
+                  ] as const
+                ).map(([icon, title, body], index) => (
+                  <li key={title} data-reveal className="flex flex-col items-center text-center">
+                    <span className="h-8 w-px bg-gradient-to-b from-transparent via-glow to-accent" />
+                    <div className="glass w-full rounded-2xl p-4">
+                      <span className="font-display text-sm font-medium text-accent">0{index + 1}</span>
+                      <div className="mt-3 flex justify-center">
+                        <Glyph name={icon} />
+                      </div>
+                      <h3 className="mt-3 font-semibold text-fg">{title}</h3>
+                      <p className="mt-2 text-sm leading-relaxed text-muted">{body}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </div>
           </div>
-        </Section>
+        </section>
 
         <Section id="practice" index="02" title="Practise freely, or take on a mission" lead="Five open practice scenarios and eleven missions, each with five pressure levels.">
           <Studio />
         </Section>
 
-        <Section id="features" index="03" title="Everything you need to speak with confidence" lead="Built for the conversations that matter in Indian workplaces and everyday life.">
-          <div className="grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {FEATURES.map((feature) => (
-              <Spotlight key={feature.title}>
+        <Section id="features" index="03" title="Everything you need to speak with confidence" lead="Built for the conversations that matter in Indian workplaces and everyday life." align="center">
+          <div className="grid gap-4 lg:grid-cols-12">
+            <article data-reveal className="accent-panel relative overflow-hidden rounded-[1.75rem] p-8 lg:col-span-5">
+              <div className="pointer-events-none absolute -right-8 -bottom-10 h-40 w-40 rounded-full bg-white/20 blur-2xl" />
+              <Glyph name={FEATURES[0].icon} tone="light" />
+              <h3 className="mt-5 font-display text-3xl font-medium tracking-tight">{FEATURES[0].title}</h3>
+              <p className="mt-3 max-w-[36ch] text-sm leading-relaxed text-white/80">{FEATURES[0].body}</p>
+            </article>
+            <article data-reveal className="glass rounded-[1.75rem] p-6 lg:col-span-7">
+              <p className="text-xs font-semibold tracking-[0.16em] text-muted uppercase">Lines you might hear</p>
+              <ul className="mt-4 space-y-3">
+                {CALLS.slice(0, 3).map((call) => (
+                  <li key={call.name} className="flex gap-3 rounded-2xl bg-bg/70 p-4">
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-[#2b5bff] to-[#18e0e6] text-sm font-bold text-white">{call.who.slice(0, 1)}</span>
+                    <span>
+                      <span className="block text-sm font-semibold text-fg">{call.who} <span className="font-normal text-muted">· {call.name}</span></span>
+                      <span className="mt-1 block text-sm leading-relaxed text-muted">“{call.line}”</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-3 text-xs text-muted">Sample lines, so you can hear the kind of conversation.</p>
+            </article>
+          </div>
+          <div className="mt-4 grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-12">
+            {FEATURES.slice(1).map((feature, index) => (
+              <Spotlight key={feature.title} className={index < 3 ? 'xl:col-span-4' : 'xl:col-span-3'}>
                 <Glyph name={feature.icon} />
                 <h3 className="mt-4 font-semibold text-fg">{feature.title}</h3>
                 <p className="mt-2 text-sm leading-relaxed text-muted">{feature.body}</p>
@@ -336,7 +359,7 @@ export function Landing() {
         </Section>
 
         <Section id="faq" index="07" title="Questions" lead="">
-          <div className="divide-y divide-line rounded-3xl border border-line bg-surface/80">
+          <div className="glass divide-y divide-line rounded-3xl">
             {FAQ.map((item) => (
               <details key={item.q} className="group px-5 py-4">
                 <summary className="cursor-pointer list-none font-semibold text-fg">
@@ -351,11 +374,12 @@ export function Landing() {
           </div>
         </Section>
 
-        <section className="page-wrap border-t border-line py-[clamp(56px,6vw,96px)] text-center">
-          <Image src="/logo-mark.png" alt="" width={72} height={72} className="mx-auto" />
-          <h2 className="section-title mx-auto mt-4 max-w-[16em]">Your next interview, rehearsed tonight.</h2>
-          <p className="mx-auto mt-3 max-w-[36ch] text-[length:var(--lead-size)] text-muted">Try the Android test version today — free.</p>
-          <div className="mt-8 flex justify-center">
+        <section className="relative overflow-hidden py-[clamp(72px,8vw,120px)] text-center">
+          <div className="floor-beam" aria-hidden />
+          <Image src="/logo-mark.png" alt="" width={72} height={72} className="relative mx-auto drop-shadow-[0_16px_40px_rgba(110,139,255,0.45)]" />
+          <h2 className="section-title relative mx-auto mt-4 max-w-[16em]">Your next interview, rehearsed tonight.</h2>
+          <p className="relative mx-auto mt-3 max-w-[36ch] text-[length:var(--lead-size)] text-muted">Try the Android test version today — free.</p>
+          <div className="relative mt-8 flex justify-center">
             <CtaButton>Get early access</CtaButton>
           </div>
         </section>
@@ -366,6 +390,10 @@ export function Landing() {
           <span className="flex items-center gap-3">
             <Brand size={24} />
             <span>© {new Date().getFullYear()}</span>
+            <span aria-hidden="true">·</span>
+            <a href="https://ruyalab.com/" className="hover:text-fg">
+              Built by Ruyalab
+            </a>
           </span>
           <nav className="flex flex-wrap gap-5">
             <Link href="/privacy" className="hover:text-fg">
@@ -459,19 +487,58 @@ function Magnetic({ children }: { children: ReactNode }) {
 function CtaButton({ children }: { children: ReactNode }) {
   return (
     <Magnetic>
-      <Link href="/download" className="rounded-full bg-accent px-6 py-3.5 font-semibold text-white shadow-[0_16px_40px_-16px_rgba(110,139,255,0.95)] transition hover:brightness-110">
+      <Link href="/download" className="rounded-full bg-accent px-6 py-3.5 font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_16px_40px_-16px_rgba(110,139,255,0.95)] transition hover:brightness-110">
         {children}
       </Link>
     </Magnetic>
   );
 }
 
-function Section({ id, index, title, lead, children }: { id?: string; index: string; title: string; lead: string; children: ReactNode }) {
+function HeroStage() {
+  const bars = [10, 18, 26, 14, 22, 28, 16, 20, 12, 24, 8, 18, 26];
   return (
-    <section id={id} className="page-wrap scroll-mt-28 border-t border-line py-[clamp(56px,5.5vw,96px)]">
-      <p className="text-sm font-medium text-accent">{index}</p>
-      <h2 data-reveal className="section-title mt-2 max-w-[18em]">{title}</h2>
-      {lead ? <p className="mt-3 max-w-[52ch] text-[length:var(--lead-size)] text-muted">{lead}</p> : null}
+    <div data-hero className="relative mx-auto mt-[clamp(28px,3vw,48px)] max-w-[980px] text-left">
+      <div className="pointer-events-none absolute inset-x-[12%] -top-8 h-24 rounded-full bg-accent/25 blur-3xl" />
+      <div className="glass relative grid items-center gap-2 rounded-[2rem] p-4 sm:p-6 lg:grid-cols-[1fr_240px]">
+        <div className="rounded-[1.4rem] bg-bg/80 p-5 sm:p-7">
+          <div className="flex items-center justify-between text-xs text-muted">
+            <span>Friendly conversation</span>
+            <span className="rounded-full bg-raised px-2 py-0.5">0:03</span>
+          </div>
+          <div className="mt-6 flex items-center gap-4">
+            <div className="grid h-16 w-16 place-items-center rounded-full bg-gradient-to-br from-[#2b5bff] to-[#18e0e6] text-2xl font-bold text-white shadow-[0_0_36px_-8px_rgba(58,215,224,0.9)]">M</div>
+            <div>
+              <p className="text-xl font-semibold text-fg">Meera</p>
+              <p className="text-sm text-muted">A new friend · Speaking</p>
+            </div>
+          </div>
+          <p className="mt-6 text-lg leading-relaxed text-fg">“{CALLS[0].line}”</p>
+          <div className="mt-6 flex h-8 items-end gap-1">
+            {bars.map((height, index) => (
+              <span key={index} className="eq-bar w-1.5 rounded-full bg-accent/80" style={{ height, animationDelay: `${index * 0.08}s` }} />
+            ))}
+          </div>
+        </div>
+        <div>
+          <div className="rounded-[1.6rem] bg-[#10131a] p-3 shadow-[0_20px_50px_-24px_rgba(80,110,255,0.8)]">
+            <div className="mark-stage is-compact">
+              <LogoStage />
+            </div>
+          </div>
+          <p className="mt-2 text-center text-xs text-muted">Drag the mark to turn it</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Section({ id, index, title, lead, children, align = 'start' }: { id?: string; index: string; title: string; lead: string; children: ReactNode; align?: 'start' | 'center' }) {
+  const center = align === 'center';
+  return (
+    <section id={id} className="page-wrap scroll-mt-28 py-[clamp(40px,4vw,72px)]">
+      <p className={`text-sm font-medium text-accent ${center ? 'text-center' : ''}`}>{index}</p>
+      <h2 data-reveal className={`section-title mt-2 max-w-[18em] ${center ? 'mx-auto text-center' : ''}`}>{title}</h2>
+      {lead ? <p className={`mt-3 max-w-[52ch] text-[length:var(--lead-size)] text-muted ${center ? 'mx-auto text-center' : ''}`}>{lead}</p> : null}
       <div className="mt-[clamp(28px,2.4vw,44px)]">{children}</div>
     </section>
   );
@@ -604,7 +671,7 @@ function Phone({ call, duration, levelName, pace }: { call: CallPreview; duratio
   );
 }
 
-function Glyph({ name, compact = false }: { name: GlyphName; compact?: boolean }) {
+function Glyph({ name, compact = false, tone = 'accent' }: { name: GlyphName; compact?: boolean; tone?: 'accent' | 'light' }) {
   const paths: Record<GlyphName, ReactNode> = {
     phone: <path d="M8 4h2.2a1 1 0 0 1 1 .8l.6 2.6a1 1 0 0 1-.5 1.1L9.6 9.6a12 12 0 0 0 4.8 4.8l1.1-1.7a1 1 0 0 1 1.1-.5l2.6.6a1 1 0 0 1 .8 1V17a2 2 0 0 1-2.2 2A14 14 0 0 1 5 6.2 2 2 0 0 1 7 4h1z" />,
     briefcase: <><rect x="3.5" y="7" width="17" height="12" rx="2" /><path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M3.5 12h17" /></>,
@@ -620,7 +687,7 @@ function Glyph({ name, compact = false }: { name: GlyphName; compact?: boolean }
     lock: <><rect x="6" y="10" width="12" height="9" rx="1.5" /><path d="M8.5 10V8a3.5 3.5 0 0 1 7 0v2" /></>,
   };
   return (
-    <span className={`grid shrink-0 place-items-center rounded-2xl bg-accent/12 text-accent ${compact ? 'h-8 w-8 rounded-xl' : 'h-10 w-10'}`}>
+    <span className={`grid shrink-0 place-items-center rounded-2xl ${tone === 'light' ? 'bg-white/15 text-white' : 'bg-accent/12 text-accent'} ${compact ? 'h-8 w-8 rounded-xl' : 'h-10 w-10'}`}>
       <svg viewBox="0 0 24 24" className={compact ? 'h-4 w-4' : 'h-5 w-5'} fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
         {paths[name]}
       </svg>
@@ -638,7 +705,7 @@ function Spotlight({ children, className = '' }: { children: ReactNode; classNam
     <div
       data-reveal
       onPointerMove={onMove}
-      className={`spotlight relative h-full overflow-hidden rounded-3xl border border-line bg-surface/80 p-6 ${className}`}
+      className={`spotlight glass relative h-full overflow-hidden rounded-3xl p-6 ${className}`}
     >
       {children}
     </div>
@@ -648,7 +715,7 @@ function Spotlight({ children, className = '' }: { children: ReactNode; classNam
 function FeedbackCard() {
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_2fr]">
-      <div data-reveal className="flex flex-col items-center justify-center rounded-3xl border border-line bg-surface/80 p-8 text-center">
+      <div data-reveal className="glass flex flex-col items-center justify-center rounded-3xl p-8 text-center">
         <span data-count="78" className="font-display text-7xl text-fg">78</span>
         <span className="mt-1 text-sm text-muted">Overall score</span>
         <div className="mt-6 grid w-full grid-cols-3 gap-2 text-xs">
@@ -670,7 +737,7 @@ function FeedbackCard() {
           ['Sounds translated', 'Please do the needful and revert back.', 'Could you take care of this and get back to me?'],
           ['More natural', 'I want to tell that I am interested.', 'I’d love to say I’m really interested.'],
         ].map(([kind, said, better]) => (
-          <div key={kind} data-reveal className="rounded-3xl border border-line bg-surface/80 p-5">
+          <div key={kind} data-reveal className="glass rounded-3xl p-5">
             <p className="text-xs font-semibold tracking-[0.16em] text-accent uppercase">{kind}</p>
             <p className="mt-2 text-muted line-through decoration-danger/70">{said}</p>
             <p className="mt-1 text-fg">{better}</p>
@@ -683,7 +750,7 @@ function FeedbackCard() {
 
 function Plan({ name, price, items, highlight }: { name: string; price: string; items: string[]; highlight?: boolean }) {
   const card = (
-    <div className={`h-full rounded-[1.4rem] p-6 ${highlight ? 'bg-bg' : 'border border-line bg-surface/80'}`}>
+    <div className={`h-full rounded-[1.4rem] p-6 ${highlight ? 'bg-bg' : 'glass'}`}>
       <div className="flex items-baseline justify-between">
         <h3 className="font-display text-3xl text-fg">{name}</h3>
         <span className={highlight ? 'font-semibold text-glow' : 'font-semibold text-fg'}>{price}</span>
